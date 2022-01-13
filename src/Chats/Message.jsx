@@ -2,14 +2,23 @@ import { Grid, ListItemText } from "@mui/material";
 import Typography from "@mui/material/Typography";
 import React, { useContext } from "react";
 import { AuthContext } from "../firebase/AuthProvider";
+import { JanusContext } from "../janus/JanusProvider";
 
 export default function Message({ children, author, timestamp }) {
   //   const user = useContext(AuthContext);
+  // const { participants } = useContext(JanusContext);
   const user = {
     displayName: "Me",
   };
 
+  const participants = {
+    PSu7kew3FO: "Me",
+    "36hm0xT1cc": "Remy Sharp",
+  };
+
   let ownMessage = author == user.displayName;
+  let enoughParticipants = Object.keys(participants).length >= 3;
+  let remoteGroupMessage = !ownMessage && enoughParticipants;
 
   return (
     <Grid
@@ -25,7 +34,7 @@ export default function Message({ children, author, timestamp }) {
           padding: "0px 10px",
         }}
       >
-        {!ownMessage && (
+        {remoteGroupMessage && (
           <ListItemText
             align={ownMessage ? "right" : "left"}
             primary={

@@ -38,31 +38,30 @@ const useStyles = makeStyles({
 });
 
 export default function ChatsLayout() {
-  console.log("ChatsLayout");
-  const { currentSession } = useContext(JanusContext);
+  const { currentSession, sendData, messages } = useContext(JanusContext);
   const [sessionId, setSessionId] = useState(0);
 
   let messageInput = useRef(null);
   const classes = useStyles();
 
   // TODO remove when accessing database or Janus
-  const [messages, setMessages] = useState([
-    {
-      text: "Hey man, What's up?",
-      author: "Me",
-      timestamp: "09:30",
-    },
-    {
-      text: "Hey, I am Good! What about you?",
-      author: "Remy Sharp",
-      timestamp: "09:31",
-    },
-    {
-      text: "Cool. i am good, let's catch up",
-      author: "Me",
-      timestamp: "10:30",
-    },
-  ]);
+  // const [messages, setMessages] = useState([
+  //   {
+  //     text: "Hey man, What's up?",
+  //     author: "Me",
+  //     timestamp: "09:30",
+  //   },
+  //   {
+  //     text: "Hey, I am Good! What about you?",
+  //     author: "Remy Sharp",
+  //     timestamp: "09:31",
+  //   },
+  //   {
+  //     text: "Cool. i am good, let's catch up",
+  //     author: "Me",
+  //     timestamp: "10:30",
+  //   },
+  // ]);
 
   // On componentDidMount
   useEffect(() => {
@@ -71,13 +70,17 @@ export default function ChatsLayout() {
       setSessionId(currentSession.getSessionId());
   }, [currentSession]);
 
+  useEffect(() => {
+    console.log("Chat messages", messages);
+  }, [messages]);
+
   // Send message
   const handleClick = (e) => {
     console.log("Sending message");
     let message = messageInput.current.value;
     console.log(message);
     // Send message
-
+    sendData(message);
     // Message sent
     messageInput.current.value = "";
   };

@@ -1,3 +1,4 @@
+import { SettingsInputAntennaTwoTone } from "@mui/icons-material";
 import React, { createContext, useEffect, useState } from "react";
 import Janus from "./janus.es";
 
@@ -10,6 +11,7 @@ export const JanusProvider = ({ children }) => {
   const [pluginHandles, setPluginHandles] = useState([]);
   const [pluginTransactions, setPluginTransactions] = useState({});
   const [pluginParticipants, setPluginParticipants] = useState({});
+  const [pluginMessages, setPluginMessages] = useState({});
 
   // CURRENT
   const [currentSession, setCurrentSession] = useState();
@@ -17,20 +19,30 @@ export const JanusProvider = ({ children }) => {
   const [currentRoom, setCurrentRoom] = useState();
   const [transactions, setTransactions] = useState();
   const [participants, setParticipants] = useState();
+  const [messages, setMessages] = useState([]);
+
+  // Temporal variables
 
   // TODO Remove when adding user management
-  const [myusername, setMyUsername] = useState("");
+  const [myusername, setMyUsername] = useState("pmurmor");
   const [myid, setMyId] = useState("");
-  const [myroom, setMyRoom] = useState("");
+  const [myroom, setMyRoom] = useState(1234);
 
   // REACT HOOKS
   const defaultDependencies = Janus.useDefaultDependencies();
 
   useEffect(() => {
+    setMessages([]);
     console.log("initial render");
     init()
       .then(() => createSession())
-      .then((session) => attachTextRoomPlugin(session));
+      .then((session) => attachTextRoomPlugin(session))
+      .then((pluginHandle) => {
+        console.log("INITIALIZATION PLUGIN HANDLE", pluginHandle);
+        addNewPluginHandle(pluginHandle);
+        // registerUsername(myusername);
+      });
+
     console.log("initial render done");
   }, []);
 
@@ -39,6 +51,17 @@ export const JanusProvider = ({ children }) => {
     if (currentSession)
       console.log("Current Session ID", currentSession.getSessionId());
   }, [currentSession]);
+
+  useEffect(() => {
+    console.log("Current Plugin Handle State Changed", { currentPluginHandle });
+    if (currentPluginHandle && currentPluginHandle.webrtcStuff.pc) {
+      registerUsername(myusername);
+    }
+  }, [currentPluginHandle]);
+
+  useEffect(() => {
+    console.log("New Messages updated", messages);
+  }, [messages]);
 
   const init = () => {
     return new Promise((resolve, _) => {
@@ -86,134 +109,158 @@ export const JanusProvider = ({ children }) => {
   };
 
   const attachTextRoomPlugin = (session) => {
-    let textRoom;
-    let params = {
-      plugin: "janus.plugin.textroom",
-      success: function (pluginHandle) {
-        // Plugin attached! 'pluginHandle' is our handle
-        console.log("pluginHandle", pluginHandle);
-        addNewPluginHandle(pluginHandle);
+    return new Promise((resolve, reject) => {
+      let textRoom;
 
-        textRoom = pluginHandle;
-        let body = { request: "setup" };
-        textRoom.send({ message: body });
-      },
-      error: (cause) => {
-        // Couldn't attach to the plugin
-        console.error(cause);
-      },
-      iceState: function (state) {
-        Janus.log("ICE state changed to " + state);
-      },
-      mediaState: function (medium, on) {
-        Janus.log(
-          "Janus " + (on ? "started" : "stopped") + " receiving our " + medium
-        );
-      },
-      webrtcState: function (on) {
-        Janus.log(
-          "Janus says our WebRTC PeerConnection is " +
-            (on ? "up" : "down") +
-            " now"
-        );
-      },
-      consentDialog: function (on) {
-        // e.g., Darken the screen if on=true (getUserMedia incoming), restore it otherwise
-      },
-      onmessage: function (msg, jsep) {
-        // We got a message/event (msg) from the plugin
-        // If jsep is not null, this involves a WebRTC negotiation
-        if (msg["error"]) {
-          console.error(msg["error"]);
-        }
-        if (jsep) {
-          // Answer
-          textRoom.createAnswer({
-            jsep: jsep,
-            media: { audio: false, video: false, data: true }, // We only use datachannels
-            success: function (jsep) {
-              Janus.debug("Got SDP!", jsep);
-              let body = { request: "ack" };
-              textRoom.send({ message: body, jsep: jsep });
-            },
-            error: function (error) {
-              Janus.error("WebRTC error:", error);
-            },
-          });
-        }
-      },
-      ondataopen: function (data) {
-        Janus.log("The DataChannel is available!");
-        // Prompt for a display name to join the default room
-      },
-      ondata: function (data) {
-        Janus.debug("We got data from the DataChannel!", data);
+      let params = {
+        plugin: "janus.plugin.textroom",
+        success: function (pluginHandle) {
+          // Plugin attached! 'pluginHandle' is our handle
+          console.log("pluginHandle", pluginHandle);
 
-        let json = JSON.parse(data);
-        let transaction = json["transaction"];
-        if (transactions[transaction]) {
-          // Someone was waiting for this
-          transactions[transaction](json);
-          delete transactions[transaction];
-          return;
-        }
-        let what = json["textroom"];
-        if (what === "message") {
-          // Incoming message: public or private?
-          let msg = escapeXmlTags(json["text"]);
-          let from = json["from"];
-          let dateString = getDateString(json["date"]);
-          let whisper = json["whisper"];
-          if (whisper) {
-            // Private message
-          } else {
-            // Public message
+          textRoom = pluginHandle;
+          let body = { request: "setup" };
+          textRoom.send({ message: body });
+
+          console.log("SETUP", { pluginHandle, currentPluginHandle });
+        },
+        error: (cause) => {
+          // Couldn't attach to the plugin
+          console.error(cause);
+        },
+        iceState: function (state) {
+          Janus.log("ICE state changed to " + state);
+        },
+        mediaState: function (medium, on) {
+          Janus.log(
+            "Janus " + (on ? "started" : "stopped") + " receiving our " + medium
+          );
+        },
+        webrtcState: function (on) {
+          Janus.log(
+            "Janus says our WebRTC PeerConnection is " +
+              (on ? "up" : "down") +
+              " now"
+          );
+
+          on ? resolve(textRoom) : reject(textRoom);
+        },
+        consentDialog: function (on) {
+          // e.g., Darken the screen if on=true (getUserMedia incoming), restore it otherwise
+        },
+        onmessage: function (msg, jsep) {
+          // We got a message/event (msg) from the plugin
+          // If jsep is not null, this involves a WebRTC negotiation
+          if (msg["error"]) {
+            console.error("Onmessage", msg["error"]);
           }
-
-          // Save the message to a database
-        } else if (what === "announcement") {
-          // Room announcement
-          let msg = escapeXmlTags(json["text"]);
-          let dateString = getDateString(json["date"]);
-        } else if (what === "join") {
-          // Somebody joined
-          let username = json["username"];
-          let display = json["display"];
-          participants[username] = escapeXmlTags(display ? display : username);
-          if (username !== myid && !(username in participants)) {
-            // Add to the participants list
+          if (jsep) {
+            // Answer
+            textRoom.createAnswer({
+              jsep: jsep,
+              media: { audio: false, video: false, data: true }, // We only use datachannels
+              success: function (jsep) {
+                Janus.debug("Got SDP!", jsep);
+                let body = { request: "ack" };
+                textRoom.send({ message: body, jsep: jsep });
+              },
+              error: function (error) {
+                Janus.error("WebRTC error:", error);
+              },
+            });
           }
-        } else if (what === "leave") {
-          // Somebody left
-          let username = json["username"];
-          let when = new Date();
-          delete participants[username];
-        } else if (what === "kicked") {
-          // Somebody was kicked
-          let username = json["username"];
-          let when = new Date();
-          delete participants[username];
-          if (username === myid) {
-            console.log("You have been kicked from the room");
-          }
-        } else if (what === "destroyed") {
-          if (json["room"] !== currentRoom) return;
-          // Room was destroyed, goodbye!
-          Janus.warn("The room has been destroyed!");
-        }
-      },
-      oncleanup: function () {
-        // PeerConnection with the plugin closed, clean the UI
-        // The plugin handle is still valid so we can create a new one
-      },
-      detached: function () {
-        // Connection with the plugin closed, get rid of its features
-        // The plugin handle is not valid anymore
-      },
-    };
+        },
+        ondataopen: function (data) {
+          Janus.log("The DataChannel is available!");
+          // Prompt for a display name to join the default room
+        },
+        ondata: function (data) {
+          Janus.debug("We got data from the DataChannel!", data);
 
-    console.log("Attached to current session", session);
-    session.attach(params);
+          let json = JSON.parse(data);
+          let transaction = json["transaction"];
+          if (transactions && transactions[transaction]) {
+            // Someone was waiting for this
+            let transactionsNew = transactions;
+            transactionsNew[transaction](json);
+            delete transactionsNew[transaction];
+            setTransactions(transactionsNew);
+            return;
+          }
+          let what = json["textroom"];
+          if (what === "message") {
+            // Incoming message: public or private?
+            let msg = escapeXmlTags(json["text"]);
+            let from = json["from"];
+            let dateString = json["date"];
+            let whisper = json["whisper"];
+            if (whisper) {
+              // Private message
+            } else {
+              // Public message
+              console.log("Public message", msg);
+            }
+
+            // Save the message to a database
+            let messagesUpdated = messages;
+            let newMessage = {
+              text: msg,
+              author: from,
+              timestamp: dateString,
+            };
+            setMessages((prevMessages) => [...prevMessages, newMessage]);
+          } else if (what === "announcement") {
+            // Room announcement
+            let msg = escapeXmlTags(json["text"]);
+            let dateString = getDateString(json["date"]);
+          } else if (what === "join") {
+            // Somebody joined
+            let username = json["username"];
+            let display = json["display"];
+            let participantsNew = participants ? participants : {};
+            participantsNew[username] = escapeXmlTags(
+              display ? display : username
+            );
+            setParticipants(participantsNew);
+            // if (username !== myid && !(username in participants)) {
+            //   // Add to the participants list
+            // }
+          } else if (what === "leave") {
+            // Somebody left
+            let username = json["username"];
+            let when = new Date();
+            let participantsNew = participants;
+            delete participantsNew[username];
+            setParticipants(participantsNew);
+          } else if (what === "kicked") {
+            // Somebody was kicked
+            let username = json["username"];
+            let when = new Date();
+            let participantsNew = participants;
+            delete participantsNew[username];
+            setParticipants(participantsNew);
+            if (username === myid) {
+              console.log("You have been kicked from the room");
+            }
+          } else if (what === "destroyed") {
+            if (json["room"] !== currentRoom) return;
+            // Room was destroyed, goodbye!
+            Janus.warn("The room has been destroyed!");
+          }
+        },
+        oncleanup: function () {
+          // PeerConnection with the plugin closed, clean the UI
+          // The plugin handle is still valid so we can create a new one
+        },
+        detached: function () {
+          // Connection with the plugin closed, get rid of its features
+          // The plugin handle is not valid anymore
+        },
+      };
+
+      console.log("Attached to current session", session);
+      session.attach(params);
+    });
   };
 
   const attachVideoRoomPlugin = (session) => {
@@ -285,7 +332,9 @@ export const JanusProvider = ({ children }) => {
         if (transactions[transaction]) {
           // Someone was waiting for this
           transactions[transaction](json);
-          delete transactions[transaction];
+          let transactionsNew = transactions;
+          delete transactionsNew[transaction];
+          setTransactions(transactionsNew);
           return;
         }
         let what = json["textroom"];
@@ -405,6 +454,7 @@ export const JanusProvider = ({ children }) => {
       room: myroom,
       text: data,
     };
+    console.log({ currentPluginHandle });
     // Note: messages are always acknowledged by default. This means that you'll
     // always receive a confirmation back that the message has been received by the
     // server and forwarded to the recipients. If you do not want this to happen,
@@ -452,20 +502,24 @@ export const JanusProvider = ({ children }) => {
 
   const registerUsername = (username) => {
     let pluginHandle = currentPluginHandle;
+    console.log("registerUsername pluginHandle", pluginHandle);
     if (username === "") {
       return;
     }
-    myid = randomString(12);
+    let tempId = randomString(12);
+    setMyId(tempId);
     let transaction = randomString(12);
     let register = {
       textroom: "join",
       transaction: transaction,
       room: myroom,
-      username: myid,
+      username: tempId,
       display: username,
     };
-    myusername = escapeXmlTags(username);
-    transactions[transaction] = (response) => {
+    console.log({ register });
+    setMyUsername(escapeXmlTags(username));
+    const tempTransaction = (response) => {
+      console.log({ response });
       if (response["textroom"] === "error") {
         // Something went wrong
         if (response["error_code"] === 417) {
@@ -476,13 +530,21 @@ export const JanusProvider = ({ children }) => {
           //     "configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
           //     "from that sample in your current configuration file, then restart Janus and try again."
           // );
-          console.log("No room with that code");
+          console.error("No room with that code");
         } else {
           console.error(response["error"]);
         }
 
         return;
       }
+
+      let newTransactionObject = {};
+      newTransactionObject[transaction] = tempTransaction;
+      setTransactions({
+        ...transactions,
+        ...newTransactionObject,
+      });
+
       // We're in
 
       // Any participants already in?
@@ -490,11 +552,18 @@ export const JanusProvider = ({ children }) => {
       if (response.participants && response.participants.length > 0) {
         for (let i in response.participants) {
           let p = response.participants[i];
-          participants[p.username] = escapeXmlTags(
+
+          let newParticipantObject = {};
+          newParticipantObject[p.username] = escapeXmlTags(
             p.display ? p.display : p.username
           );
+          setParticipants({
+            ...participants,
+            ...newParticipantObject,
+          });
+
           if (p.username !== myid && !(username in participants)) {
-            // Add to the participants list
+            // Add to the participants list (UI)
 
             // Send private message as joined participant
             sendPrivateMsg(myusername);
@@ -502,10 +571,14 @@ export const JanusProvider = ({ children }) => {
         }
       }
     };
+
     pluginHandle.data({
       text: JSON.stringify(register),
       error: function (reason) {
         console.error(reason);
+      },
+      success: (res) => {
+        console.log("JOINED CORRECTLY", res);
       },
     });
   };
@@ -526,7 +599,16 @@ export const JanusProvider = ({ children }) => {
   };
 
   return (
-    <JanusContext.Provider value={{ currentSession }}>
+    <JanusContext.Provider
+      value={{
+        currentSession,
+        sendData,
+        currentRoom,
+        transactions,
+        participants,
+        messages,
+      }}
+    >
       {children}
     </JanusContext.Provider>
   );
