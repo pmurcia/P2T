@@ -1,4 +1,10 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, {
+  createRef,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Avatar,
   Grid,
@@ -16,6 +22,7 @@ import SendIcon from "@mui/icons-material/Send";
 import { makeStyles } from "@mui/styles";
 import { JanusContext } from "../janus/JanusProvider";
 import Message from "../Chats/Message";
+import { AuthContext } from "../firebase/AuthProvider";
 
 const useStyles = makeStyles({
   table: {
@@ -23,7 +30,7 @@ const useStyles = makeStyles({
   },
   chatSection: {
     width: "100%",
-    height: "80vh",
+    height: "100vh",
   },
   headBG: {
     backgroundColor: "#e0e0e0",
@@ -32,16 +39,18 @@ const useStyles = makeStyles({
     borderRight: "1px solid #e0e0e0",
   },
   messageArea: {
-    height: "70vh",
+    height: "80vh",
     overflowY: "auto",
   },
 });
 
 export default function ChatsLayout() {
   const { currentSession, sendData, messages } = useContext(JanusContext);
+  const { user } = useContext(AuthContext);
   const [sessionId, setSessionId] = useState(0);
 
   let messageInput = useRef(null);
+  let messagesEnd = useRef();
   const classes = useStyles();
 
   // TODO remove when accessing database or Janus
@@ -72,7 +81,12 @@ export default function ChatsLayout() {
 
   useEffect(() => {
     console.log("Chat messages", messages);
+    scrollToBottom();
   }, [messages]);
+
+  const scrollToBottom = () => {
+    messagesEnd.scrollIntoView({ behavior: "smooth" });
+  };
 
   // Send message
   const handleClick = (e) => {
@@ -85,18 +99,19 @@ export default function ChatsLayout() {
     messageInput.current.value = "";
   };
 
+  // Send message when pressed enter
+  const checkEnter = (e) => {
+    let theCode = e.keyCode ? e.keyCode : e.which ? e.which : e.charCode;
+    if (theCode == 13) {
+      handleClick();
+    }
+  };
+
   return (
     <>
       {/* The current session is{" "}
       {currentSession ? currentSession.getSessionId() : ""} */}
       <div>
-        <Grid container>
-          <Grid item xs={12}>
-            <Typography variant="h5" className="header-message">
-              Chat
-            </Typography>
-          </Grid>
-        </Grid>
         <Grid container component={Paper} className={classes.chatSection}>
           <Grid item xs={3} className={classes.borderRight500}>
             <List>
@@ -156,12 +171,18 @@ export default function ChatsLayout() {
             {/**** Message History *****/}
             <List className={classes.messageArea}>
               {messages.map(({ text, author, timestamp }, index) => (
-                <ListItem key={index}>
+                <ListItem key={index} autoFocus={index === messages.length}>
                   <Message author={author} timestamp={timestamp}>
                     {text}
                   </Message>
                 </ListItem>
               ))}
+              <div
+                style={{ float: "left", clear: "both" }}
+                ref={(el) => {
+                  messagesEnd = el;
+                }}
+              ></div>
             </List>
             <Divider />
             <Grid container style={{ padding: "20px" }}>
@@ -171,6 +192,7 @@ export default function ChatsLayout() {
                   placeholder="Enter message"
                   fullWidth
                   inputRef={messageInput}
+                  onKeyPress={checkEnter}
                 />
               </Grid>
               <Grid item xs={1} align="right">

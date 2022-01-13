@@ -1,5 +1,6 @@
 import { SettingsInputAntennaTwoTone } from "@mui/icons-material";
-import React, { createContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { AuthContext } from "../firebase/AuthProvider";
 import Janus from "./janus.es";
 
 export const JanusContext = createContext();
@@ -21,27 +22,37 @@ export const JanusProvider = ({ children }) => {
   const [participants, setParticipants] = useState();
   const [messages, setMessages] = useState([]);
 
-  // Temporal variables
+  // USER INFORMATION
+  const { user } = useContext(AuthContext);
+  const [myusername, setMyUsername] = useState();
+  const [myid, setMyId] = useState();
+
+  useEffect(() => {
+    if (user) {
+      // User logged in
+      setMyId(user.uid);
+      setMyUsername(user.displayName);
+
+      // We start Janus service
+      init()
+        .then(() => createSession())
+        .then((session) => attachTextRoomPlugin(session))
+        .then((pluginHandle) => {
+          console.log("INITIALIZATION PLUGIN HANDLE", pluginHandle);
+          addNewPluginHandle(pluginHandle);
+          // registerUsername(myusername);
+        });
+    }
+  }, [user]);
 
   // TODO Remove when adding user management
-  const [myusername, setMyUsername] = useState("pmurmor");
-  const [myid, setMyId] = useState("");
   const [myroom, setMyRoom] = useState(1234);
 
   // REACT HOOKS
   const defaultDependencies = Janus.useDefaultDependencies();
 
   useEffect(() => {
-    setMessages([]);
     console.log("initial render");
-    init()
-      .then(() => createSession())
-      .then((session) => attachTextRoomPlugin(session))
-      .then((pluginHandle) => {
-        console.log("INITIALIZATION PLUGIN HANDLE", pluginHandle);
-        addNewPluginHandle(pluginHandle);
-        // registerUsername(myusername);
-      });
 
     console.log("initial render done");
   }, []);
@@ -196,6 +207,7 @@ export const JanusProvider = ({ children }) => {
             let whisper = json["whisper"];
             if (whisper) {
               // Private message
+              console.log("Private message", msg);
             } else {
               // Public message
               console.log("Public message", msg);
@@ -454,7 +466,7 @@ export const JanusProvider = ({ children }) => {
       room: myroom,
       text: data,
     };
-    console.log({ currentPluginHandle });
+
     // Note: messages are always acknowledged by default. This means that you'll
     // always receive a confirmation back that the message has been received by the
     // server and forwarded to the recipients. If you do not want this to happen,
@@ -506,14 +518,12 @@ export const JanusProvider = ({ children }) => {
     if (username === "") {
       return;
     }
-    let tempId = randomString(12);
-    setMyId(tempId);
     let transaction = randomString(12);
     let register = {
       textroom: "join",
       transaction: transaction,
       room: myroom,
-      username: tempId,
+      username: myid,
       display: username,
     };
     console.log({ register });
@@ -534,7 +544,6 @@ export const JanusProvider = ({ children }) => {
         } else {
           console.error(response["error"]);
         }
-
         return;
       }
 
@@ -581,21 +590,6 @@ export const JanusProvider = ({ children }) => {
         console.log("JOINED CORRECTLY", res);
       },
     });
-  };
-
-  const checkEnter = (field, event) => {
-    let theCode = event.keyCode
-      ? event.keyCode
-      : event.which
-      ? event.which
-      : event.charCode;
-    if (theCode == 13) {
-      if (field.id == "username") registerUsername();
-      else if (field.id == "datasend") sendData();
-      return false;
-    } else {
-      return true;
-    }
   };
 
   return (
