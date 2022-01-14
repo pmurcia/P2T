@@ -4,6 +4,7 @@ import { AuthContext } from "../firebase/AuthProvider";
 import Janus from "./janus.es";
 
 export const JanusContext = createContext();
+let transactionsTemp = {};
 
 export const JanusProvider = ({ children }) => {
   // STATE MANAGEMENT
@@ -17,21 +18,23 @@ export const JanusProvider = ({ children }) => {
   // CURRENT
   const [currentSession, setCurrentSession] = useState();
   const [currentPluginHandle, setCurrentPluginHandle] = useState();
-  const [currentRoom, setCurrentRoom] = useState();
-  const [transactions, setTransactions] = useState();
-  const [participants, setParticipants] = useState();
+  const [currentRoom, setCurrentRoom] = useState(0);
+  const [transactions, setTransactions] = useState({});
+  const [participants, setParticipants] = useState({});
   const [messages, setMessages] = useState([]);
 
   // USER INFORMATION
   const { user } = useContext(AuthContext);
-  const [myusername, setMyUsername] = useState();
-  const [myid, setMyId] = useState();
+  const [myusername, setMyUsername] = useState("");
+  const [myid, setMyId] = useState("");
 
   useEffect(() => {
     if (user) {
       // User logged in
       setMyId(user.uid);
       setMyUsername(user.displayName);
+
+      transactionsTemp = transactions;
 
       // We start Janus service
       init()
@@ -53,7 +56,6 @@ export const JanusProvider = ({ children }) => {
 
   useEffect(() => {
     console.log("initial render");
-
     console.log("initial render done");
   }, []);
 
@@ -73,6 +75,14 @@ export const JanusProvider = ({ children }) => {
   useEffect(() => {
     console.log("New Messages updated", messages);
   }, [messages]);
+
+  useEffect(() => {
+    console.log("Participants updated", participants);
+  }, [participants]);
+
+  useEffect(() => {
+    console.log("Transactions updated", transactions);
+  }, [transactions]);
 
   const init = () => {
     return new Promise((resolve, _) => {
@@ -119,9 +129,30 @@ export const JanusProvider = ({ children }) => {
     setCurrentPluginHandle(pluginHandle);
   };
 
+  const handleIncomingTransaction = (transaction, json) => {
+    console.log({ transactions, transaction });
+    if (transaction && transactions[transaction]) {
+      // Someone was waiting for this
+      // let transactionsNew = transactions;
+      console.log("Execute transaction");
+      transactions[transaction](json);
+      // delete transactionsNew[transaction];
+      setTransactions((prevTransactions) => {
+        delete prevTransactions[transaction];
+        return {
+          ...prevTransactions,
+        };
+      });
+    }
+
+    return transaction && transactions[transaction];
+  };
+
   const attachTextRoomPlugin = (session) => {
+    // let transactionsNow = transactions;
     return new Promise((resolve, reject) => {
       let textRoom;
+      // let transactionsNow;
 
       let params = {
         plugin: "janus.plugin.textroom",
@@ -190,12 +221,18 @@ export const JanusProvider = ({ children }) => {
 
           let json = JSON.parse(data);
           let transaction = json["transaction"];
-          if (transactions && transactions[transaction]) {
+          // transactionsNow = transactions;
+          // console.log({ transactionsNow, transaction });
+          // if (handleIncomingTransaction(transaction, json)) 7;
+          console.log("Execute transaction", { transactionsTemp });
+          if (transaction && transactionsTemp[transaction]) {
             // Someone was waiting for this
-            let transactionsNew = transactions;
-            transactionsNew[transaction](json);
-            delete transactionsNew[transaction];
-            setTransactions(transactionsNew);
+            // let transactionsNew = transactions;
+            transactionsTemp[transaction](json);
+            delete transactionsTemp[transaction];
+            // delete transactionsNew[transaction];
+            setTransactions(transactionsTemp);
+
             return;
           }
           let what = json["textroom"];
@@ -214,13 +251,15 @@ export const JanusProvider = ({ children }) => {
             }
 
             // Save the message to a database
-            let messagesUpdated = messages;
+            // let messagesUpdated = messages;
             let newMessage = {
               text: msg,
               author: from,
               timestamp: dateString,
             };
-            setMessages((prevMessages) => [...prevMessages, newMessage]);
+            setMessages((prevMessages) => {
+              return [...prevMessages, newMessage];
+            });
           } else if (what === "announcement") {
             // Room announcement
             let msg = escapeXmlTags(json["text"]);
@@ -229,11 +268,25 @@ export const JanusProvider = ({ children }) => {
             // Somebody joined
             let username = json["username"];
             let display = json["display"];
-            let participantsNew = participants ? participants : {};
-            participantsNew[username] = escapeXmlTags(
+            // let participantsNew = participants ? participants : {};
+            // participantsNew[username] = escapeXmlTags(
+            //   display ? display : username
+            // );
+            let newParticipantObject = {};
+            let newParticipantValue = escapeXmlTags(
               display ? display : username
             );
-            setParticipants(participantsNew);
+            // newParticipantObject[username] = escapeXmlTags(
+            //   display ? display : username
+            // );
+            console.log({ newParticipantObject });
+            setParticipants((prevParticipants) => {
+              return {
+                ...prevParticipants,
+                [username]: newParticipantValue,
+              };
+            });
+
             // if (username !== myid && !(username in participants)) {
             //   // Add to the participants list
             // }
@@ -241,16 +294,27 @@ export const JanusProvider = ({ children }) => {
             // Somebody left
             let username = json["username"];
             let when = new Date();
-            let participantsNew = participants;
-            delete participantsNew[username];
-            setParticipants(participantsNew);
+            // let participantsNew = participants;
+            // delete participantsNew[username];
+            setParticipants((prevParticipants) => {
+              delete prevParticipants[username];
+              return {
+                ...prevParticipants,
+              };
+            });
           } else if (what === "kicked") {
             // Somebody was kicked
             let username = json["username"];
             let when = new Date();
-            let participantsNew = participants;
-            delete participantsNew[username];
-            setParticipants(participantsNew);
+            // let participantsNew = participants;
+            // delete participantsNew[username];
+            // setParticipants(participantsNew);
+            setParticipants((prevParticipants) => {
+              delete prevParticipants[username];
+              return {
+                ...prevParticipants,
+              };
+            });
             if (username === myid) {
               console.log("You have been kicked from the room");
             }
@@ -528,7 +592,7 @@ export const JanusProvider = ({ children }) => {
     };
     console.log({ register });
     setMyUsername(escapeXmlTags(username));
-    const tempTransaction = (response) => {
+    const transactionFunc = (response) => {
       console.log({ response });
       if (response["textroom"] === "error") {
         // Something went wrong
@@ -547,29 +611,27 @@ export const JanusProvider = ({ children }) => {
         return;
       }
 
-      let newTransactionObject = {};
-      newTransactionObject[transaction] = tempTransaction;
-      setTransactions({
-        ...transactions,
-        ...newTransactionObject,
-      });
-
       // We're in
 
       // Any participants already in?
       console.log("Participants:", response.participants);
       if (response.participants && response.participants.length > 0) {
+        let joinedParticipants = {};
+
         for (let i in response.participants) {
           let p = response.participants[i];
 
           let newParticipantObject = {};
-          newParticipantObject[p.username] = escapeXmlTags(
+          let newParticipantValue = escapeXmlTags(
             p.display ? p.display : p.username
           );
-          setParticipants({
-            ...participants,
-            ...newParticipantObject,
-          });
+          // newParticipantObject[p.username] = escapeXmlTags(
+          //   p.display ? p.display : p.username
+          // );
+          joinedParticipants = {
+            ...joinedParticipants,
+            [p.username]: newParticipantValue,
+          };
 
           if (p.username !== myid && !(username in participants)) {
             // Add to the participants list (UI)
@@ -578,8 +640,28 @@ export const JanusProvider = ({ children }) => {
             sendPrivateMsg(myusername);
           }
         }
+
+        // Add new participants to state
+        setParticipants((prevParticipants) => {
+          return {
+            ...prevParticipants,
+            ...joinedParticipants,
+          };
+        });
       }
     };
+
+    transactionsTemp = {
+      ...transactions,
+      [transaction]: transactionFunc,
+    };
+
+    setTransactions((prevTransactions) => {
+      return {
+        ...transactions,
+        [transaction]: transactionFunc,
+      };
+    });
 
     pluginHandle.data({
       text: JSON.stringify(register),

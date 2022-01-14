@@ -1,20 +1,24 @@
 import { Grid, ListItemText } from "@mui/material";
 import Typography from "@mui/material/Typography";
-import React, { useContext } from "react";
+import React, { useContext, useEffect } from "react";
 import { AuthContext } from "../firebase/AuthProvider";
 import { JanusContext } from "../janus/JanusProvider";
 
 export default function Message({ children, author, timestamp }) {
   const { user } = useContext(AuthContext);
-  // const { participants } = useContext(JanusContext);
+  const { participants } = useContext(JanusContext);
   // const user = {
   //   displayName: "Me",
   // };
 
-  const participants = {
-    PSu7kew3FO: "Me",
-    "36hm0xT1cc": "Remy Sharp",
-  };
+  // const participants = {
+  //   PSu7kew3FO: "Me",
+  //   "36hm0xT1cc": "Remy Sharp",
+  // };
+
+  useEffect(() => {
+    console.log({ participants });
+  }, [participants]);
 
   let ownMessage = author == user.uid;
   let enoughParticipants = Object.keys(participants).length >= 3;
@@ -39,7 +43,7 @@ export default function Message({ children, author, timestamp }) {
             align={ownMessage ? "right" : "left"}
             primary={
               <Typography type="body2" style={{ fontWeight: "bold" }}>
-                {author}
+                {participants[author]}
               </Typography>
             }
           ></ListItemText>
