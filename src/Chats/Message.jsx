@@ -24,6 +24,16 @@ export default function Message({ children, author, timestamp }) {
   let enoughParticipants = Object.keys(participants).length >= 3;
   let remoteGroupMessage = !ownMessage && enoughParticipants;
 
+  const beautifyTimestamp = (timestamp) => {
+    let date = new Date(timestamp);
+    let hours = date.getHours();
+    let minutes = date.getMinutes();
+
+    return `${hours < 10 ? "0" : ""}${hours}:${
+      minutes < 10 ? "0" : ""
+    }${minutes}`;
+  };
+
   return (
     <Grid
       container
@@ -54,7 +64,7 @@ export default function Message({ children, author, timestamp }) {
         ></ListItemText>
         <ListItemText
           align={ownMessage ? "right" : "left"}
-          secondary={timestamp}
+          secondary={beautifyTimestamp(timestamp)}
         ></ListItemText>
       </Grid>
     </Grid>

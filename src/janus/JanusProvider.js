@@ -18,7 +18,7 @@ export const JanusProvider = ({ children }) => {
   // CURRENT
   const [currentSession, setCurrentSession] = useState();
   const [currentPluginHandle, setCurrentPluginHandle] = useState();
-  const [currentRoom, setCurrentRoom] = useState(0);
+  const [currentRoom, setCurrentRoom] = useState(1234);
   const [transactions, setTransactions] = useState({});
   const [participants, setParticipants] = useState({});
   const [messages, setMessages] = useState([]);

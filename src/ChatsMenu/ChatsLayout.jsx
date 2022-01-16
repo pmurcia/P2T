@@ -17,12 +17,15 @@ import {
   Divider,
   TextField,
   Fab,
+  IconButton,
+  Button,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import { makeStyles } from "@mui/styles";
 import { JanusContext } from "../janus/JanusProvider";
 import Message from "../Chats/Message";
 import { AuthContext } from "../firebase/AuthProvider";
+import { DatabaseContext } from "../firebase/DatabaseProvider";
 
 const useStyles = makeStyles({
   table: {
@@ -45,34 +48,29 @@ const useStyles = makeStyles({
 });
 
 export default function ChatsLayout() {
-  const { currentSession, sendData, messages } = useContext(JanusContext);
+  const { currentSession, sendData, messages, currentRoom } =
+    useContext(JanusContext);
   const { user } = useContext(AuthContext);
+  const { addToQueue, isMyTurn, removeFromQueue, isOnQueue, roomsInfo } =
+    useContext(DatabaseContext);
   const [sessionId, setSessionId] = useState(0);
+  const [canTalk, setCanTalk] = useState(false);
 
   let messageInput = useRef(null);
   let messagesEnd = useRef();
+
   const classes = useStyles();
 
-  // TODO remove when accessing database or Janus
-  // const [messages, setMessages] = useState([
-  //   {
-  //     text: "Hey man, What's up?",
-  //     author: "Me",
-  //     timestamp: "09:30",
-  //   },
-  //   {
-  //     text: "Hey, I am Good! What about you?",
-  //     author: "Remy Sharp",
-  //     timestamp: "09:31",
-  //   },
-  //   {
-  //     text: "Cool. i am good, let's catch up",
-  //     author: "Me",
-  //     timestamp: "10:30",
-  //   },
-  // ]);
+  useEffect(() => {
+    console.log("UPDATED ROOMS INFO IN CHATS LAYOUT", isMyTurn(currentRoom));
+    console.log("ROOMS INFO IN CHATS LAYOUT", { roomsInfo, currentRoom });
+    setCanTalk(isMyTurn(currentRoom));
+  }, [roomsInfo]);
 
-  // On componentDidMount
+  useEffect(() => {
+    console.log(`CAN${canTalk ? "" : "NOT"} TALK`);
+  }, [canTalk]);
+
   useEffect(() => {
     console.log("Value", currentSession);
     if (currentSession?.getSessionId())
@@ -95,8 +93,19 @@ export default function ChatsLayout() {
     console.log(message);
     // Send message
     sendData(message);
+    removeFromQueue(currentRoom);
     // Message sent
     messageInput.current.value = "";
+  };
+
+  const handleActivityClick = (e) => {
+    console.log("Checking for queue");
+    let onQueue = isOnQueue(currentRoom);
+    if (!onQueue) {
+      addToQueue(currentRoom);
+    } else {
+      console.log("Already on queue");
+    }
   };
 
   // Send message when pressed enter
@@ -186,20 +195,45 @@ export default function ChatsLayout() {
             </List>
             <Divider />
             <Grid container style={{ padding: "20px" }}>
-              <Grid item xs={11}>
-                <TextField
-                  id="message-text"
-                  placeholder="Enter message"
-                  fullWidth
-                  inputRef={messageInput}
-                  onKeyPress={checkEnter}
-                />
-              </Grid>
-              <Grid item xs={1} align="right">
-                <Fab color="primary" aria-label="add" onClick={handleClick}>
-                  <SendIcon />
-                </Fab>
-              </Grid>
+              {canTalk && (
+                <>
+                  <Grid item xs={11}>
+                    <TextField
+                      id="message-text"
+                      placeholder="Enter message"
+                      fullWidth
+                      inputRef={messageInput}
+                      onKeyPress={checkEnter}
+                      disabled={!canTalk}
+                      onClick={handleActivityClick}
+                      autoFocus={canTalk}
+                    />
+                  </Grid>
+                  <Grid item xs={1} align="right">
+                    <IconButton
+                      variant="contained"
+                      color="primary"
+                      aria-label="add"
+                      onClick={handleClick}
+                    >
+                      <SendIcon />
+                    </IconButton>
+                  </Grid>
+                </>
+              )}
+              {!canTalk && (
+                <>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    aria-label="request-write"
+                    onClick={handleActivityClick}
+                    fullWidth
+                  >
+                    Request to talk
+                  </Button>
+                </>
+              )}
             </Grid>
           </Grid>
         </Grid>
