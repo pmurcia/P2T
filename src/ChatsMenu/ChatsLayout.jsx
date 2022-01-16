@@ -19,6 +19,8 @@ import {
   Fab,
   IconButton,
   Button,
+  ListItemAvatar,
+  CircularProgress,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import { makeStyles } from "@mui/styles";
@@ -41,14 +43,18 @@ const useStyles = makeStyles({
   borderRight500: {
     borderRight: "1px solid #e0e0e0",
   },
+  borderLeft500: {
+    borderLeft: "1px solid #e0e0e0",
+    height: "100vh",
+  },
   messageArea: {
-    height: "80vh",
+    minHeight: "80vh",
     overflowY: "auto",
   },
 });
 
 export default function ChatsLayout() {
-  const { currentSession, sendData, messages, currentRoom } =
+  const { currentSession, sendData, messages, currentRoom, participants } =
     useContext(JanusContext);
   const { user } = useContext(AuthContext);
   const { addToQueue, isMyTurn, removeFromQueue, isOnQueue, roomsInfo } =
@@ -58,8 +64,14 @@ export default function ChatsLayout() {
 
   let messageInput = useRef(null);
   let messagesEnd = useRef();
+  let talkTimerRef = useRef(null);
 
   const classes = useStyles();
+
+  useEffect(() => {
+    // Clear interval when the component unmounts
+    return () => clearTimeout(talkTimerRef.current);
+  });
 
   useEffect(() => {
     console.log("UPDATED ROOMS INFO IN CHATS LAYOUT", isMyTurn(currentRoom));
@@ -69,6 +81,14 @@ export default function ChatsLayout() {
 
   useEffect(() => {
     console.log(`CAN${canTalk ? "" : "NOT"} TALK`);
+    if (canTalk) {
+      talkTimerRef.current = setTimeout(() => {
+        console.log("You took to much time to finish");
+        removeFromQueue(currentRoom);
+      }, 10000);
+    } else {
+      clearTimeout(talkTimerRef.current);
+    }
   }, [canTalk]);
 
   useEffect(() => {
@@ -90,12 +110,14 @@ export default function ChatsLayout() {
   const handleClick = (e) => {
     console.log("Sending message");
     let message = messageInput.current.value;
-    console.log(message);
-    // Send message
-    sendData(message);
-    removeFromQueue(currentRoom);
-    // Message sent
-    messageInput.current.value = "";
+    if (message) {
+      console.log(message);
+      // Send message
+      sendData(message);
+      removeFromQueue(currentRoom);
+      // Message sent
+      messageInput.current.value = "";
+    }
   };
 
   const handleActivityClick = (e) => {
@@ -113,28 +135,95 @@ export default function ChatsLayout() {
     let theCode = e.keyCode ? e.keyCode : e.which ? e.which : e.charCode;
     if (theCode == 13) {
       handleClick();
+    } else {
+      clearTimeout(talkTimerRef.current);
+      talkTimerRef.current = setTimeout(() => {
+        console.log("You took to much time to finish");
+        removeFromQueue(currentRoom);
+      }, 10000);
     }
+  };
+
+  // Get queue for all participants in a room, whether on queue or not
+  const getQueueInfo = () => {
+    let queue = roomsInfo[currentRoom]?.queue;
+    let initial = [];
+
+    console.log({ participants, queue });
+
+    // Add information about queue order
+    for (let p in participants) {
+      let indexInQueue = -1;
+      console.log({ p, queue });
+      if (queue) indexInQueue = Object.values(queue)?.indexOf(p);
+
+      console.log({ p, indexInQueue });
+
+      if (indexInQueue < 0) indexInQueue = Object.keys(participants).length + 1;
+      console.log({ p, indexInQueue });
+
+      initial = [
+        ...initial,
+        {
+          queuePos: indexInQueue + 1,
+          queueUserDisplay: participants[p],
+          queueUserId: p,
+        },
+      ];
+    }
+
+    let initialSorted = initial.sort((a, b) => {
+      return a.queuePos - b.queuePos;
+    });
+
+    // Assing UI positions on list
+    // let finalOrder = initialOrder.map(
+    //   (item) => {
+    //     this.acc++;
+    //     return {
+    //       ...item,
+    //       listKey: this.acc,
+    //     };
+    //   },
+    //   { acc: 1 }
+    // );
+
+    let final = [];
+    initialSorted.forEach((item) => {
+      let lastPos = Object.keys(participants).length + 1;
+      if (item.queuePos >= lastPos) {
+        item.queuePos = null;
+      }
+
+      final = [...final, item];
+    });
+
+    console.log({ final });
+
+    return final;
   };
 
   return (
     <>
-      {/* The current session is{" "}
-      {currentSession ? currentSession.getSessionId() : ""} */}
       <div>
         <Grid container component={Paper} className={classes.chatSection}>
           <Grid item xs={3} className={classes.borderRight500}>
+            {/* Profile menu */}
             <List>
-              <ListItem button key="RemySharp">
+              <ListItem button key="profile">
                 <ListItemIcon>
                   <Avatar
-                    alt="Remy Sharp"
-                    src="https://material-ui.com/static/images/avatar/1.jpg"
+                    alt={`${user.displayName} profile picture`}
+                    src={user.photoURL}
                   />
                 </ListItemIcon>
-                <ListItemText primary="John Wick"></ListItemText>
+                <ListItemText primary={user.displayName}></ListItemText>
               </ListItem>
             </List>
+
             <Divider />
+
+            {/* Search function */}
             <Grid item xs={12} style={{ padding: "10px" }}>
               <TextField
                 id="outlined-basic-email"
@@ -143,40 +232,53 @@ export default function ChatsLayout() {
                 fullWidth
               />
             </Grid>
+
             <Divider />
+
+            {/* Join or create buttons */}
+            <Grid container item xs={12} style={{ padding: "10px" }}>
+              {/* <Grid container> */}
+              <Grid item xs={6} style={{ padding: "10px" }}>
+                <Button
+                  variant="contained"
+                  color="success"
+                  aria-label="create-room"
+                  fullWidth
+                >
+                  Create
+                </Button>
+              </Grid>
+
+              <Grid item xs={6} style={{ padding: "10px" }} align="right">
+                <Button
+                  variant="contained"
+                  color="primary"
+                  aria-label="join-room"
+                  fullWidth
+                >
+                  Join
+                </Button>
+              </Grid>
+            </Grid>
+
+            <Divider />
+
+            {/* Rooms that user joined */}
             <List>
-              <ListItem button key="RemySharp">
+              <ListItem button key="Demo">
                 <ListItemIcon>
                   <Avatar
-                    alt="Remy Sharp"
+                    alt="Demo Room"
                     src="https://material-ui.com/static/images/avatar/1.jpg"
                   />
                 </ListItemIcon>
-                <ListItemText primary="Remy Sharp">Remy Sharp</ListItemText>
-                <ListItemText secondary="online" align="right"></ListItemText>
-              </ListItem>
-              <ListItem button key="Alice">
-                <ListItemIcon>
-                  <Avatar
-                    alt="Alice"
-                    src="https://material-ui.com/static/images/avatar/3.jpg"
-                  />
-                </ListItemIcon>
-                <ListItemText primary="Alice">Alice</ListItemText>
-              </ListItem>
-              <ListItem button key="CindyBaker">
-                <ListItemIcon>
-                  <Avatar
-                    alt="Cindy Baker"
-                    src="https://material-ui.com/static/images/avatar/2.jpg"
-                  />
-                </ListItemIcon>
-                <ListItemText primary="Cindy Baker">Cindy Baker</ListItemText>
+                <ListItemText primary="Demo Room">Demo Room</ListItemText>
+                {/* <ListItemText secondary="online" align="right"></ListItemText> */}
               </ListItem>
             </List>
           </Grid>
 
-          <Grid item xs={9}>
+          <Grid item xs={7}>
             {/**** Message History *****/}
             <List className={classes.messageArea}>
               {messages.map(({ text, author, timestamp }, index) => (
@@ -193,7 +295,9 @@ export default function ChatsLayout() {
                 }}
               ></div>
             </List>
+
             <Divider />
+
             <Grid container style={{ padding: "20px" }}>
               {canTalk && (
                 <>
@@ -205,7 +309,6 @@ export default function ChatsLayout() {
                       inputRef={messageInput}
                       onKeyPress={checkEnter}
                       disabled={!canTalk}
-                      onClick={handleActivityClick}
                       autoFocus={canTalk}
                     />
                   </Grid>
@@ -225,16 +328,59 @@ export default function ChatsLayout() {
                 <>
                   <Button
                     variant="contained"
-                    color="primary"
+                    color={isOnQueue(currentRoom) ? "warning" : "primary"}
                     aria-label="request-write"
                     onClick={handleActivityClick}
                     fullWidth
                   >
-                    Request to talk
+                    {isOnQueue(currentRoom) ? (
+                      <>
+                        <CircularProgress
+                          sx={{
+                            color: "white",
+                          }}
+                        />
+                      </>
+                    ) : (
+                      "Request to talk"
+                    )}
                   </Button>
                 </>
               )}
             </Grid>
+          </Grid>
+
+          <Grid item xs={2} className={classes.borderLeft500}>
+            <Typography variant="h5">Participants</Typography>
+
+            <Divider />
+
+            {/* Queue for speaking */}
+            <List>
+              {participants && (
+                <>
+                  {getQueueInfo().map(
+                    ({ queuePos, queueUserDisplay, queueUserId }, key) => (
+                      <ListItem key={key}>
+                        <ListItemAvatar>
+                          <Avatar
+                            sx={{
+                              bgcolor: queuePos ? "primary.main" : "default",
+                            }}
+                          >
+                            {queuePos ? queuePos : "-"}
+                          </Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primary={queueUserDisplay}
+                          secondary={queueUserId == user.uid ? "(me)" : ""}
+                        ></ListItemText>
+                      </ListItem>
+                    )
+                  )}
+                </>
+              )}
+            </List>
           </Grid>
         </Grid>
       </div>
