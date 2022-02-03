@@ -1,6 +1,7 @@
-import { SettingsInputAntennaTwoTone } from "@mui/icons-material";
+import { RoomOutlined, SettingsInputAntennaTwoTone } from "@mui/icons-material";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { AuthContext } from "../firebase/AuthProvider";
+import { DatabaseContext } from "../firebase/DatabaseProvider";
 import Janus from "./janus.es";
 
 export const JanusContext = createContext();
@@ -11,28 +12,44 @@ export const JanusProvider = ({ children }) => {
   // GLOBAL
   const [sessions, setSessions] = useState([]);
   const [pluginHandles, setPluginHandles] = useState([]);
-  const [pluginTransactions, setPluginTransactions] = useState({});
   const [pluginParticipants, setPluginParticipants] = useState({});
   const [pluginMessages, setPluginMessages] = useState({});
 
   // CURRENT
   const [currentSession, setCurrentSession] = useState();
   const [currentPluginHandle, setCurrentPluginHandle] = useState();
-  const [currentRoom, setCurrentRoom] = useState(1234);
+  const [currentRoom, setCurrentRoom] = useState(null);
   const [transactions, setTransactions] = useState({});
   const [participants, setParticipants] = useState({});
   const [messages, setMessages] = useState([]);
 
   // USER INFORMATION
   const { user } = useContext(AuthContext);
+  const {
+    database,
+    readData,
+    writeData,
+    removeFromQueue,
+    addToQueue,
+    isOnQueue,
+    isMyTurn,
+    roomsInfo,
+    appendMessage,
+    addUserRoom,
+    addToRoomParticipants,
+    usersInfo,
+  } = useContext(DatabaseContext);
   const [myusername, setMyUsername] = useState("");
   const [myid, setMyId] = useState("");
+
+  // REACT HOOKS
+  const defaultDependencies = Janus.useDefaultDependencies();
 
   useEffect(() => {
     if (user) {
       // User logged in
       setMyId(user.uid);
-      setMyUsername(user.displayName);
+      setMyUsername(escapeXmlTags(user.displayName));
 
       transactionsTemp = transactions;
 
@@ -48,17 +65,6 @@ export const JanusProvider = ({ children }) => {
     }
   }, [user]);
 
-  // TODO Remove when adding user management
-  const [myroom, setMyRoom] = useState(1234);
-
-  // REACT HOOKS
-  const defaultDependencies = Janus.useDefaultDependencies();
-
-  useEffect(() => {
-    console.log("initial render");
-    console.log("initial render done");
-  }, []);
-
   useEffect(() => {
     console.log("Current Session State Changed", { currentSession });
     if (currentSession)
@@ -68,9 +74,13 @@ export const JanusProvider = ({ children }) => {
   useEffect(() => {
     console.log("Current Plugin Handle State Changed", { currentPluginHandle });
     if (currentPluginHandle && currentPluginHandle.webrtcStuff.pc) {
-      registerUsername(myusername);
+      // joinRoom(currentRoom);
     }
   }, [currentPluginHandle]);
+
+  // useEffect(() => {
+  //   if (currentRoom) joinRoom(currentRoom);
+  // }, [currentRoom]);
 
   useEffect(() => {
     console.log("New Messages updated", messages);
@@ -527,7 +537,7 @@ export const JanusProvider = ({ children }) => {
     let message = {
       textroom: "message",
       transaction: randomString(12),
-      room: myroom,
+      room: currentRoom,
       text: data,
     };
 
@@ -542,7 +552,15 @@ export const JanusProvider = ({ children }) => {
         console.log(reason);
       },
       success: () => {
-        // $('#datasend').val('');
+        // Update message with info
+        let messageModel = {
+          ...message,
+          date: Date.now(),
+          whisper: false,
+          from: myid,
+        };
+        // Save message to database
+        appendMessage(messageModel);
       },
     });
   };
@@ -557,7 +575,7 @@ export const JanusProvider = ({ children }) => {
       let message = {
         textroom: "message",
         transaction: randomString(12),
-        room: myroom,
+        room: currentRoom,
         to: username,
         text: messageBody,
       };
@@ -576,35 +594,127 @@ export const JanusProvider = ({ children }) => {
     return;
   };
 
-  const registerUsername = (username) => {
+  // const registerUsername = (username) => {
+  //   let pluginHandle = currentPluginHandle;
+  //   console.log("registerUsername pluginHandle", pluginHandle);
+  //   if (username === "") {
+  //     return;
+  //   }
+  //   let transaction = randomString(12);
+  //   let register = {
+  //     textroom: "join",
+  //     transaction: transaction,
+  //     room: currentRoom,
+  //     username: myid,
+  //     display: username,
+  //   };
+  //   console.log({ register });
+  //   setMyUsername(escapeXmlTags(username));
+  //   const transactionFunc = (response) => {
+  //     console.log({ response });
+  //     if (response["textroom"] === "error") {
+  //       // Something went wrong
+  //       if (response["error_code"] === 417) {
+  //         // This is a "no such room" error: give a more meaningful description
+  //         // bootbox.alert(
+  //         //     "<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
+  //         //     "does not exist...</p><p>Do you have an updated <code>janus.plugin.textroom.jcfg</code> " +
+  //         //     "configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
+  //         //     "from that sample in your current configuration file, then restart Janus and try again."
+  //         // );
+  //         console.error("No room with that code");
+  //       } else {
+  //         console.error(response["error"]);
+  //       }
+  //       return;
+  //     }
+
+  //     // We're in
+
+  //     // Any participants already in?
+  //     console.log("Participants:", response.participants);
+  //     if (response.participants && response.participants.length > 0) {
+  //       let joinedParticipants = {};
+
+  //       for (let i in response.participants) {
+  //         let p = response.participants[i];
+
+  //         let newParticipantObject = {};
+  //         let newParticipantValue = escapeXmlTags(
+  //           p.display ? p.display : p.username
+  //         );
+  //         // newParticipantObject[p.username] = escapeXmlTags(
+  //         //   p.display ? p.display : p.username
+  //         // );
+  //         joinedParticipants = {
+  //           ...joinedParticipants,
+  //           [p.username]: newParticipantValue,
+  //         };
+
+  //         if (p.username !== myid && !(username in participants)) {
+  //           // Add to the participants list (UI)
+
+  //           // Send private message as joined participant
+  //           sendPrivateMsg(myusername);
+  //         }
+  //       }
+
+  //       // Add new participants to state
+  //       setParticipants((prevParticipants) => {
+  //         return {
+  //           ...prevParticipants,
+  //           ...joinedParticipants,
+  //         };
+  //       });
+  //     }
+  //   };
+
+  //   transactionsTemp = {
+  //     ...transactions,
+  //     [transaction]: transactionFunc,
+  //   };
+
+  //   setTransactions((prevTransactions) => {
+  //     return {
+  //       ...transactions,
+  //       [transaction]: transactionFunc,
+  //     };
+  //   });
+
+  //   pluginHandle.data({
+  //     text: JSON.stringify(register),
+  //     error: function (reason) {
+  //       console.error(reason);
+  //     },
+  //     success: (res) => {
+  //       console.log("JOINED CORRECTLY", res);
+  //     },
+  //   });
+  // };
+
+  const joinRoom = (roomId) => {
     let pluginHandle = currentPluginHandle;
-    console.log("registerUsername pluginHandle", pluginHandle);
-    if (username === "") {
+    if (!myusername) {
       return;
     }
     let transaction = randomString(12);
-    let register = {
+    let join = {
       textroom: "join",
       transaction: transaction,
-      room: myroom,
+      room: roomId,
       username: myid,
-      display: username,
+      display: myusername,
     };
-    console.log({ register });
-    setMyUsername(escapeXmlTags(username));
+    console.log({ join });
+
     const transactionFunc = (response) => {
       console.log({ response });
       if (response["textroom"] === "error") {
         // Something went wrong
         if (response["error_code"] === 417) {
-          // This is a "no such room" error: give a more meaningful description
-          // bootbox.alert(
-          //     "<p>Apparently room <code>" + myroom + "</code> (the one this demo uses as a test room) " +
-          //     "does not exist...</p><p>Do you have an updated <code>janus.plugin.textroom.jcfg</code> " +
-          //     "configuration file? If not, make sure you copy the details of room <code>" + myroom + "</code> " +
-          //     "from that sample in your current configuration file, then restart Janus and try again."
-          // );
           console.error("No room with that code");
+        } else if (response["error_code"] == 420) {
+          console.log("Already logged in");
         } else {
           console.error(response["error"]);
         }
@@ -612,6 +722,10 @@ export const JanusProvider = ({ children }) => {
       }
 
       // We're in
+      setCurrentRoom(roomId);
+
+      // Add to overall participants
+      addToRoomParticipants(roomId);
 
       // Any participants already in?
       console.log("Participants:", response.participants);
@@ -633,11 +747,9 @@ export const JanusProvider = ({ children }) => {
             [p.username]: newParticipantValue,
           };
 
-          if (p.username !== myid && !(username in participants)) {
-            // Add to the participants list (UI)
-
+          if (p.username !== myid) {
             // Send private message as joined participant
-            sendPrivateMsg(myusername);
+            sendPrivateMsg(p.username);
           }
         }
 
@@ -664,12 +776,69 @@ export const JanusProvider = ({ children }) => {
     });
 
     pluginHandle.data({
-      text: JSON.stringify(register),
+      text: JSON.stringify(join),
       error: function (reason) {
         console.error(reason);
       },
       success: (res) => {
         console.log("JOINED CORRECTLY", res);
+      },
+    });
+  };
+
+  const createRoom = ({ adminKey, description, secret, pin, isPrivate }) => {
+    let pluginHandle = currentPluginHandle;
+
+    let transaction = randomString(12);
+    let create = {
+      textroom: "create",
+      transaction: transaction,
+      history: 0,
+      permanent: true,
+    };
+
+    const transactionFunc = (response) => {
+      console.log({ response });
+      if (response["textroom"] === "error") {
+        // Something went wrong
+        if (response["error_code"] === 417) {
+          console.error("No room with that code");
+        } else {
+          console.error(response["error"]);
+        }
+        return;
+      }
+
+      if (!response["permanent"]) {
+        console.error("Could not save to config file: Permissions problems");
+        return;
+      }
+
+      // Room created correctly
+      // setCurrentRoom(response["room"]);
+      addUserRoom(response["room"]);
+    };
+
+    transactionsTemp = {
+      ...transactions,
+      [transaction]: transactionFunc,
+    };
+
+    setTransactions((prevTransactions) => {
+      return {
+        ...transactions,
+        [transaction]: transactionFunc,
+      };
+    });
+
+    pluginHandle.data({
+      text: JSON.stringify(create),
+      error: function (reason) {
+        console.log({ reason });
+        console.error(reason);
+      },
+      success: (res) => {
+        console.log("CREATED ROOM", res);
       },
     });
   };
@@ -683,6 +852,8 @@ export const JanusProvider = ({ children }) => {
         transactions,
         participants,
         messages,
+        createRoom,
+        joinRoom,
       }}
     >
       {children}

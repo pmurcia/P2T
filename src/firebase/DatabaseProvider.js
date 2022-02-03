@@ -18,6 +18,8 @@ import { AuthContext } from "./AuthProvider";
 export const DatabaseContext = createContext();
 
 export const DatabaseProvider = ({ children }) => {
+  const { user } = useContext(AuthContext);
+
   // STATE VARIABLES
   const [database, setDatabase] = useState();
   const [roomsRef, setRoomsRef] = useState();
@@ -27,8 +29,7 @@ export const DatabaseProvider = ({ children }) => {
   // const [queueRef, setQueueRef] = useState();
 
   const [roomsInfo, setRoomsInfo] = useState({});
-
-  const { user } = useContext(AuthContext);
+  const [usersInfo, setUsersInfo] = useState({});
 
   // REACT HOOKS
   useEffect(() => {
@@ -78,15 +79,32 @@ export const DatabaseProvider = ({ children }) => {
       });
 
       onChildAdded(refForUsers, (data) => {
-        // addCommentElement(postElement, data.key, data.val().text, data.val().author);
+        console.log("CHILD ADDED", data);
+        setUsersInfo({
+          ...usersInfo,
+          [data.key]: data.val(),
+        });
       });
 
       onChildChanged(refForUsers, (data) => {
-        // setCommentValues(postElement, data.key, data.val().text, data.val().author);
+        console.log("CHILD CHANGED", data);
+        setUsersInfo({
+          ...usersInfo,
+          [data.key]: data.val(),
+        });
       });
 
       onChildRemoved(refForUsers, (data) => {
-        // deleteComment(postElement, data.key);
+        console.log("CHILD REMOVED", data);
+        setUsersInfo((prevUsersInfo) => {
+          let newUsersInfo = prevUsersInfo;
+          console.log("BEFORE DELETING", newUsersInfo);
+          delete newUsersInfo[data.key];
+          console.log("AFTER DELETING", newUsersInfo);
+          return {
+            ...newUsersInfo,
+          };
+        });
       });
     }
   }, [database]);
@@ -133,6 +151,29 @@ export const DatabaseProvider = ({ children }) => {
     set(databaseListRef, user.uid);
   };
 
+  const appendMessage = (message) => {
+    let room = message["room"];
+    let databaseRef = ref(database, `rooms/${room}/messages`);
+    let databaseListRef = push(databaseRef);
+    set(databaseListRef, message);
+  };
+
+  const addToRoomParticipants = (room) => {
+    let databaseRef = ref(database, `rooms/${room}/participants`);
+    let databaseListRef = push(databaseRef);
+    let payload = {
+      id: user.uid,
+      display: user.displayName,
+    };
+    set(databaseListRef, payload);
+  };
+
+  const addUserRoom = (room) => {
+    let databaseRef = ref(database, `users/${user.uid}/rooms`);
+    let databaseListRef = push(databaseRef);
+    set(databaseListRef, room);
+  };
+
   const removeFromQueue = (room) => {
     let roomQueue = roomsInfo[room].queue;
     let timestampId = null;
@@ -176,12 +217,16 @@ export const DatabaseProvider = ({ children }) => {
             isOnQueue,
             isMyTurn,
             roomsInfo,
+            appendMessage,
+            addUserRoom,
+            addToRoomParticipants,
+            usersInfo,
           }}
         >
           {children}
         </DatabaseContext.Provider>
       ) : (
-        "Connecting to database"
+        "Connecting to the database"
       )}
     </>
   );

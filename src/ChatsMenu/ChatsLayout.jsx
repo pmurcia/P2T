@@ -21,6 +21,8 @@ import {
   Button,
   ListItemAvatar,
   CircularProgress,
+  Modal,
+  Box,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import { makeStyles } from "@mui/styles";
@@ -28,6 +30,7 @@ import { JanusContext } from "../janus/JanusProvider";
 import Message from "../Chats/Message";
 import { AuthContext } from "../firebase/AuthProvider";
 import { DatabaseContext } from "../firebase/DatabaseProvider";
+import ProfileMenu from "./ProfileMenu";
 
 const useStyles = makeStyles({
   table: {
@@ -57,10 +60,17 @@ export default function ChatsLayout() {
   const { currentSession, sendData, messages, currentRoom, participants } =
     useContext(JanusContext);
   const { user } = useContext(AuthContext);
-  const { addToQueue, isMyTurn, removeFromQueue, isOnQueue, roomsInfo } =
-    useContext(DatabaseContext);
+  const {
+    addToQueue,
+    isMyTurn,
+    removeFromQueue,
+    isOnQueue,
+    roomsInfo,
+    usersInfo,
+  } = useContext(DatabaseContext);
   const [sessionId, setSessionId] = useState(0);
   const [canTalk, setCanTalk] = useState(false);
+  const [myRooms, setMyRooms] = useState([]);
 
   let messageInput = useRef(null);
   let messagesEnd = useRef();
@@ -101,6 +111,12 @@ export default function ChatsLayout() {
     console.log("Chat messages", messages);
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    let rooms = usersInfo[user.uid]?.rooms;
+    console.log({ rooms });
+    if (rooms) setMyRooms(Object.values(rooms));
+  }, [usersInfo]);
 
   const scrollToBottom = () => {
     messagesEnd.scrollIntoView({ behavior: "smooth" });
@@ -208,18 +224,7 @@ export default function ChatsLayout() {
       <div>
         <Grid container component={Paper} className={classes.chatSection}>
           <Grid item xs={3} className={classes.borderRight500}>
-            {/* Profile menu */}
-            <List>
-              <ListItem button key="profile">
-                <ListItemIcon>
-                  <Avatar
-                    alt={`${user.displayName} profile picture`}
-                    src={user.photoURL}
-                  />
-                </ListItemIcon>
-                <ListItemText primary={user.displayName}></ListItemText>
-              </ListItem>
-            </List>
+            <ProfileMenu user={user} />
 
             <Divider />
 
@@ -237,27 +242,12 @@ export default function ChatsLayout() {
 
             {/* Join or create buttons */}
             <Grid container item xs={12} style={{ padding: "10px" }}>
-              {/* <Grid container> */}
               <Grid item xs={6} style={{ padding: "10px" }}>
-                <Button
-                  variant="contained"
-                  color="success"
-                  aria-label="create-room"
-                  fullWidth
-                >
-                  Create
-                </Button>
+                <CreateRoomButton />
               </Grid>
 
               <Grid item xs={6} style={{ padding: "10px" }} align="right">
-                <Button
-                  variant="contained"
-                  color="primary"
-                  aria-label="join-room"
-                  fullWidth
-                >
-                  Join
-                </Button>
+                <JoinRoomButton />
               </Grid>
             </Grid>
 
@@ -265,16 +255,22 @@ export default function ChatsLayout() {
 
             {/* Rooms that user joined */}
             <List>
-              <ListItem button key="Demo">
-                <ListItemIcon>
-                  <Avatar
-                    alt="Demo Room"
-                    src="https://material-ui.com/static/images/avatar/1.jpg"
-                  />
-                </ListItemIcon>
-                <ListItemText primary="Demo Room">Demo Room</ListItemText>
-                {/* <ListItemText secondary="online" align="right"></ListItemText> */}
-              </ListItem>
+              {myRooms.map((roomId) => (
+                <ListItem button key={roomId}>
+                  <ListItemIcon>
+                    <Avatar
+                      alt={roomsInfo[roomId]?.description || `Room ${roomId}`}
+                      src="https://material-ui.com/static/images/avatar/1.jpg"
+                    />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={roomsInfo[roomId]?.description || `Room ${roomId}`}
+                  >
+                    {roomsInfo[roomId]?.description || `Room ${roomId}`}
+                  </ListItemText>
+                  {/* <ListItemText secondary="online" align="right"></ListItemText> */}
+                </ListItem>
+              ))}
             </List>
           </Grid>
 
@@ -385,5 +381,58 @@ export default function ChatsLayout() {
         </Grid>
       </div>
     </>
+  );
+}
+
+function ModalDialog({ open }) {
+  return (
+    <Modal
+      open={open}
+      aria-labelledby="modal-modal-title"
+      aria-describedby="modal-modal-description"
+    >
+      <Box>
+        <Typography id="modal-modal-title" variant="h6" component="h2">
+          Text in a modal
+        </Typography>
+        <Typography id="modal-modal-description" sx={{ mt: 2 }}>
+          Duis mollis, est non commodo luctus, nisi erat porttitor ligula.
+        </Typography>
+      </Box>
+    </Modal>
+  );
+}
+
+function CreateRoomButton() {
+  const { createRoom } = useContext(JanusContext);
+
+  return (
+    <Button
+      variant="contained"
+      color="success"
+      aria-label="create-room"
+      fullWidth
+      onClick={createRoom}
+    >
+      Create
+    </Button>
+  );
+}
+
+function JoinRoomButton() {
+  const handleClick = () => {
+    console.log("JOIN ROOM");
+  };
+
+  return (
+    <Button
+      variant="contained"
+      color="primary"
+      aria-label="join-room"
+      fullWidth
+      onClick={handleClick}
+    >
+      Join
+    </Button>
   );
 }
