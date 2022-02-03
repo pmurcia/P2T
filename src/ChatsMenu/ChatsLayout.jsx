@@ -1,10 +1,4 @@
-import React, {
-  createRef,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Avatar,
   Grid,
@@ -16,7 +10,6 @@ import {
   Paper,
   Divider,
   TextField,
-  Fab,
   IconButton,
   Button,
   ListItemAvatar,
@@ -57,8 +50,14 @@ const useStyles = makeStyles({
 });
 
 export default function ChatsLayout() {
-  const { currentSession, sendData, messages, currentRoom, participants } =
-    useContext(JanusContext);
+  const {
+    currentSession,
+    sendData,
+    messages,
+    currentRoom,
+    participants,
+    joinRoom,
+  } = useContext(JanusContext);
   const { user } = useContext(AuthContext);
   const {
     addToQueue,
@@ -68,9 +67,9 @@ export default function ChatsLayout() {
     roomsInfo,
     usersInfo,
   } = useContext(DatabaseContext);
-  const [sessionId, setSessionId] = useState(0);
+
   const [canTalk, setCanTalk] = useState(false);
-  const [myRooms, setMyRooms] = useState([]);
+  const [myRooms, setMyRooms] = useState();
 
   let messageInput = useRef(null);
   let messagesEnd = useRef();
@@ -102,12 +101,6 @@ export default function ChatsLayout() {
   }, [canTalk]);
 
   useEffect(() => {
-    console.log("Value", currentSession);
-    if (currentSession?.getSessionId())
-      setSessionId(currentSession.getSessionId());
-  }, [currentSession]);
-
-  useEffect(() => {
     console.log("Chat messages", messages);
     scrollToBottom();
   }, [messages]);
@@ -115,7 +108,9 @@ export default function ChatsLayout() {
   useEffect(() => {
     let rooms = usersInfo[user.uid]?.rooms;
     console.log({ rooms });
-    if (rooms) setMyRooms(Object.values(rooms));
+    if (rooms) {
+      setMyRooms(Object.values(rooms));
+    }
   }, [usersInfo]);
 
   const scrollToBottom = () => {
@@ -255,35 +250,44 @@ export default function ChatsLayout() {
 
             {/* Rooms that user joined */}
             <List>
-              {myRooms.map((roomId) => (
-                <ListItem button key={roomId}>
-                  <ListItemIcon>
-                    <Avatar
-                      alt={roomsInfo[roomId]?.description || `Room ${roomId}`}
-                      src="https://material-ui.com/static/images/avatar/1.jpg"
-                    />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={roomsInfo[roomId]?.description || `Room ${roomId}`}
-                  >
-                    {roomsInfo[roomId]?.description || `Room ${roomId}`}
-                  </ListItemText>
-                  {/* <ListItemText secondary="online" align="right"></ListItemText> */}
-                </ListItem>
-              ))}
+              {myRooms
+                ? myRooms.map((roomId) => {
+                    let roomDetail = roomsInfo[roomId];
+                    return (
+                      <ListItem
+                        button
+                        key={roomId}
+                        onClick={() => joinRoom(roomId)}
+                      >
+                        <ListItemIcon>
+                          <Avatar
+                            alt={roomDetail?.description || `Room ${roomId}`}
+                            src="https://material-ui.com/static/images/avatar/1.jpg"
+                          />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={roomDetail?.description || `Room ${roomId}`}
+                        >
+                          {roomDetail?.description || `Room ${roomId}`}
+                        </ListItemText>
+                      </ListItem>
+                    );
+                  })
+                : null}
             </List>
           </Grid>
 
           <Grid item xs={7}>
             {/**** Message History *****/}
             <List className={classes.messageArea}>
-              {messages.map(({ text, author, timestamp }, index) => (
-                <ListItem key={index} autoFocus={index === messages.length}>
-                  <Message author={author} timestamp={timestamp}>
-                    {text}
-                  </Message>
-                </ListItem>
-              ))}
+              {messages &&
+                messages.map(({ text, author, timestamp }, index) => (
+                  <ListItem key={index} autoFocus={index === messages.length}>
+                    <Message author={author} timestamp={timestamp}>
+                      {text}
+                    </Message>
+                  </ListItem>
+                ))}
               <div
                 style={{ float: "left", clear: "both" }}
                 ref={(el) => {
@@ -405,6 +409,9 @@ function ModalDialog({ open }) {
 
 function CreateRoomButton() {
   const { createRoom } = useContext(JanusContext);
+  const handleClick = () => {
+    createRoom();
+  };
 
   return (
     <Button
@@ -412,7 +419,7 @@ function CreateRoomButton() {
       color="success"
       aria-label="create-room"
       fullWidth
-      onClick={createRoom}
+      onClick={handleClick}
     >
       Create
     </Button>

@@ -48,63 +48,75 @@ export const DatabaseProvider = ({ children }) => {
 
       onChildAdded(refForRooms, (data) => {
         // addCommentElement(postElement, data.key, data.val().text, data.val().author);
-        console.log("CHILD ADDED", data);
-        setRoomsInfo({
-          ...roomsInfo,
-          [data.key]: data.val(),
-        });
+        if (data) {
+          console.log("CHILD ADDED", data);
+          setRoomsInfo({
+            ...roomsInfo,
+            [data.key]: data.val(),
+          });
+        }
       });
 
       onChildChanged(refForRooms, (data) => {
         // setCommentValues(postElement, data.key, data.val().text, data.val().author);
-        console.log("CHILD CHANGED", data);
-        setRoomsInfo({
-          ...roomsInfo,
-          [data.key]: data.val(),
-        });
+        if (data) {
+          console.log("CHILD CHANGED", data);
+          setRoomsInfo({
+            ...roomsInfo,
+            [data.key]: data.val(),
+          });
+        }
       });
 
       onChildRemoved(refForRooms, (data) => {
         // deleteComment(postElement, data.key);
-        console.log("CHILD REMOVED", data);
-        setRoomsInfo((prevRoomsInfo) => {
-          let newRoomsInfo = prevRoomsInfo;
-          console.log("BEFORE DELETING", newRoomsInfo);
-          delete newRoomsInfo[data.key];
-          console.log("AFTER DELETING", newRoomsInfo);
-          return {
-            ...newRoomsInfo,
-          };
-        });
+        if (data) {
+          console.log("CHILD REMOVED", data);
+          setRoomsInfo((prevRoomsInfo) => {
+            let newRoomsInfo = prevRoomsInfo;
+            console.log("BEFORE DELETING", newRoomsInfo);
+            delete newRoomsInfo[data.key];
+            console.log("AFTER DELETING", newRoomsInfo);
+            return {
+              ...newRoomsInfo,
+            };
+          });
+        }
       });
 
       onChildAdded(refForUsers, (data) => {
-        console.log("CHILD ADDED", data);
-        setUsersInfo({
-          ...usersInfo,
-          [data.key]: data.val(),
-        });
+        if (data) {
+          console.log("CHILD ADDED", data);
+          setUsersInfo({
+            ...usersInfo,
+            [data.key]: data.val(),
+          });
+        }
       });
 
       onChildChanged(refForUsers, (data) => {
-        console.log("CHILD CHANGED", data);
-        setUsersInfo({
-          ...usersInfo,
-          [data.key]: data.val(),
-        });
+        if (data) {
+          console.log("CHILD CHANGED", data);
+          setUsersInfo({
+            ...usersInfo,
+            [data.key]: data.val(),
+          });
+        }
       });
 
       onChildRemoved(refForUsers, (data) => {
-        console.log("CHILD REMOVED", data);
-        setUsersInfo((prevUsersInfo) => {
-          let newUsersInfo = prevUsersInfo;
-          console.log("BEFORE DELETING", newUsersInfo);
-          delete newUsersInfo[data.key];
-          console.log("AFTER DELETING", newUsersInfo);
-          return {
-            ...newUsersInfo,
-          };
-        });
+        if (data) {
+          console.log("CHILD REMOVED", data);
+          setUsersInfo((prevUsersInfo) => {
+            let newUsersInfo = prevUsersInfo;
+            console.log("BEFORE DELETING", newUsersInfo);
+            delete newUsersInfo[data.key];
+            console.log("AFTER DELETING", newUsersInfo);
+            return {
+              ...newUsersInfo,
+            };
+          });
+        }
       });
     }
   }, [database]);
@@ -137,13 +149,13 @@ export const DatabaseProvider = ({ children }) => {
       });
   };
 
-  const readDataListener = (params) => {
-    let databaseRef = ref(database, `rooms/${params["room"]}`);
-    onValue(databaseRef, (snapshot) => {
-      const data = snapshot.val();
-      return data;
-    });
-  };
+  // const readDataListener = (params) => {
+  //   let databaseRef = ref(database, `rooms/${params["room"]}`);
+  //   onValue(databaseRef, (snapshot) => {
+  //     const data = snapshot.val();
+  //     return data;
+  //   });
+  // };
 
   const addToQueue = (room) => {
     let databaseRef = ref(database, `rooms/${room}/queue`);
@@ -159,13 +171,11 @@ export const DatabaseProvider = ({ children }) => {
   };
 
   const addToRoomParticipants = (room) => {
-    let databaseRef = ref(database, `rooms/${room}/participants`);
-    let databaseListRef = push(databaseRef);
+    let databaseRef = ref(database, `rooms/${room}/participants/${user.uid}`);
     let payload = {
-      id: user.uid,
       display: user.displayName,
     };
-    set(databaseListRef, payload);
+    set(databaseRef, payload);
   };
 
   const addUserRoom = (room) => {
@@ -187,6 +197,16 @@ export const DatabaseProvider = ({ children }) => {
     if (!timestampId) return;
 
     let queueRef = ref(database, `rooms/${room}/queue/${timestampId}`);
+    remove(queueRef);
+  };
+
+  const addRoomToList = ({ roomId, description }) => {
+    let databaseRef = ref(database, `rooms/${roomId}/description`);
+    set(databaseRef, description);
+  };
+
+  const removeRoomFromList = ({ roomId }) => {
+    let queueRef = ref(database, `rooms/${roomId}`);
     remove(queueRef);
   };
 
@@ -221,6 +241,8 @@ export const DatabaseProvider = ({ children }) => {
             addUserRoom,
             addToRoomParticipants,
             usersInfo,
+            addRoomToList,
+            removeRoomFromList,
           }}
         >
           {children}

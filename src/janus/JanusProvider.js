@@ -1,4 +1,3 @@
-import { RoomOutlined, SettingsInputAntennaTwoTone } from "@mui/icons-material";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { AuthContext } from "../firebase/AuthProvider";
 import { DatabaseContext } from "../firebase/DatabaseProvider";
@@ -6,6 +5,7 @@ import Janus from "./janus.es";
 
 export const JanusContext = createContext();
 let transactionsTemp = {};
+let descriptionTemp = "";
 
 export const JanusProvider = ({ children }) => {
   // STATE MANAGEMENT
@@ -38,12 +38,34 @@ export const JanusProvider = ({ children }) => {
     addUserRoom,
     addToRoomParticipants,
     usersInfo,
+    addRoomToList,
   } = useContext(DatabaseContext);
   const [myusername, setMyUsername] = useState("");
   const [myid, setMyId] = useState("");
+  const [sessionOk, setSessionOk] = useState(false);
 
   // REACT HOOKS
   const defaultDependencies = Janus.useDefaultDependencies();
+
+  useEffect(() => {
+    console.log("Connecting to room", currentRoom);
+    let messagesRaw = roomsInfo[currentRoom]?.messages;
+    let messagesTemp = messagesRaw ? Object.values(messagesRaw) : [];
+    console.log({ roomsInfo, messagesTemp });
+    messagesTemp = messagesTemp.map((message) => parseMessage(message));
+    console.log({ roomsInfo, messagesTemp });
+    setMessages(messagesTemp);
+  }, [currentRoom]);
+
+  const parseMessage = ({ text, from, date }) => {
+    let msg = escapeXmlTags(text);
+    let dateString = date;
+    return {
+      text: msg,
+      author: from,
+      timestamp: dateString,
+    };
+  };
 
   useEffect(() => {
     if (user) {
@@ -73,8 +95,8 @@ export const JanusProvider = ({ children }) => {
 
   useEffect(() => {
     console.log("Current Plugin Handle State Changed", { currentPluginHandle });
-    if (currentPluginHandle && currentPluginHandle.webrtcStuff.pc) {
-      // joinRoom(currentRoom);
+    if (currentPluginHandle && currentPluginHandle?.webrtcStuff?.pc) {
+      setSessionOk(true);
     }
   }, [currentPluginHandle]);
 
@@ -713,8 +735,12 @@ export const JanusProvider = ({ children }) => {
         // Something went wrong
         if (response["error_code"] === 417) {
           console.error("No room with that code");
-        } else if (response["error_code"] == 420) {
+        } else if (
+          response["error_code"] == 420 ||
+          response["error_code"] == 421
+        ) {
           console.log("Already logged in");
+          setCurrentRoom(roomId);
         } else {
           console.error(response["error"]);
         }
@@ -786,7 +812,7 @@ export const JanusProvider = ({ children }) => {
     });
   };
 
-  const createRoom = ({ adminKey, description, secret, pin, isPrivate }) => {
+  const createRoom = (description = "Room") => {
     let pluginHandle = currentPluginHandle;
 
     let transaction = randomString(12);
@@ -796,6 +822,8 @@ export const JanusProvider = ({ children }) => {
       history: 0,
       permanent: true,
     };
+
+    descriptionTemp = description;
 
     const transactionFunc = (response) => {
       console.log({ response });
@@ -817,6 +845,16 @@ export const JanusProvider = ({ children }) => {
       // Room created correctly
       // setCurrentRoom(response["room"]);
       addUserRoom(response["room"]);
+
+      console.log({ response, descriptionTemp });
+
+      // Add Room to list of rooms
+      addRoomToList({
+        roomId: response["room"],
+        description: descriptionTemp,
+      });
+
+      descriptionTemp = "";
     };
 
     transactionsTemp = {
