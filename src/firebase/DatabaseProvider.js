@@ -170,10 +170,11 @@ export const DatabaseProvider = ({ children }) => {
     set(databaseListRef, message);
   };
 
-  const addToRoomParticipants = (room) => {
+  const addToRoomParticipants = (room, data) => {
     let databaseRef = ref(database, `rooms/${room}/participants/${user.uid}`);
     let payload = {
       display: user.displayName,
+      ...data,
     };
     set(databaseRef, payload);
   };

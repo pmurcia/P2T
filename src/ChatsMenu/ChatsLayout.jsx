@@ -57,6 +57,9 @@ export default function ChatsLayout() {
     currentRoom,
     participants,
     joinRoom,
+    joinVideoRoom,
+    publishOwnFeed,
+    unpublishOwnFeed,
   } = useContext(JanusContext);
   const { user } = useContext(AuthContext);
   const {
@@ -93,8 +96,9 @@ export default function ChatsLayout() {
     if (canTalk) {
       talkTimerRef.current = setTimeout(() => {
         console.log("You took to much time to finish");
+        unpublishOwnFeed();
         removeFromQueue(currentRoom);
-      }, 10000);
+      }, 20000);
     } else {
       clearTimeout(talkTimerRef.current);
     }
@@ -119,16 +123,17 @@ export default function ChatsLayout() {
 
   // Send message
   const handleClick = (e) => {
-    console.log("Sending message");
-    let message = messageInput.current.value;
-    if (message) {
-      console.log(message);
-      // Send message
-      sendData(message);
-      removeFromQueue(currentRoom);
-      // Message sent
-      messageInput.current.value = "";
-    }
+    publishOwnFeed(true, true);
+    // console.log("Sending message");
+    // let message = messageInput.current.value;
+    // if (message) {
+    //   console.log(message);
+    //   // Send message
+    //   sendData(message);
+    //   removeFromQueue(currentRoom);
+    //   // Message sent
+    //   messageInput.current.value = "";
+    // }
   };
 
   const handleActivityClick = (e) => {
@@ -150,8 +155,9 @@ export default function ChatsLayout() {
       clearTimeout(talkTimerRef.current);
       talkTimerRef.current = setTimeout(() => {
         console.log("You took to much time to finish");
+        unpublishOwnFeed();
         removeFromQueue(currentRoom);
-      }, 10000);
+      }, 20000);
     }
   };
 
@@ -257,7 +263,7 @@ export default function ChatsLayout() {
                       <ListItem
                         button
                         key={roomId}
-                        onClick={() => joinRoom(roomId)}
+                        onClick={() => joinVideoRoom(roomId)}
                       >
                         <ListItemIcon>
                           <Avatar
@@ -408,9 +414,9 @@ function ModalDialog({ open }) {
 }
 
 function CreateRoomButton() {
-  const { createRoom } = useContext(JanusContext);
+  const { createRoom, createVideoRoom } = useContext(JanusContext);
   const handleClick = () => {
-    createRoom();
+    createVideoRoom();
   };
 
   return (
