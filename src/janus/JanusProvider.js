@@ -372,134 +372,194 @@ export const JanusProvider = ({ children }) => {
   };
 
   const attachVideoRoomPlugin = (session) => {
-    let textRoom;
-    let params = {
-      plugin: "janus.plugin.videoroom",
-      success: function (pluginHandle) {
-        // Plugin attached! 'pluginHandle' is our handle
-        console.log("pluginHandle", pluginHandle);
-        addNewPluginHandle(pluginHandle);
+    // let transactionsNow = transactions;
+    return new Promise((resolve, reject) => {
+      let videoRoom;
+      // let transactionsNow;
 
-        textRoom = pluginHandle;
-        let body = { request: "setup" };
-        textRoom.send({ message: body });
-      },
-      error: (cause) => {
-        // Couldn't attach to the plugin
-        console.error(cause);
-      },
-      iceState: function (state) {
-        Janus.log("ICE state changed to " + state);
-      },
-      mediaState: function (medium, on) {
-        Janus.log(
-          "Janus " + (on ? "started" : "stopped") + " receiving our " + medium
-        );
-      },
-      webrtcState: function (on) {
-        Janus.log(
-          "Janus says our WebRTC PeerConnection is " +
-            (on ? "up" : "down") +
-            " now"
-        );
-      },
-      consentDialog: function (on) {
-        // e.g., Darken the screen if on=true (getUserMedia incoming), restore it otherwise
-      },
-      onmessage: function (msg, jsep) {
-        // We got a message/event (msg) from the plugin
-        // If jsep is not null, this involves a WebRTC negotiation
-        if (msg["error"]) {
-          console.error(msg["error"]);
-        }
-        if (jsep) {
-          // Answer
-          textRoom.createAnswer({
-            jsep: jsep,
-            media: { audio: false, video: false, data: true }, // We only use datachannels
-            success: function (jsep) {
-              Janus.debug("Got SDP!", jsep);
-              let body = { request: "ack" };
-              textRoom.send({ message: body, jsep: jsep });
-            },
-            error: function (error) {
-              Janus.error("WebRTC error:", error);
-            },
-          });
-        }
-      },
-      ondataopen: function (data) {
-        Janus.log("The DataChannel is available!");
-        // Prompt for a display name to join the default room
-      },
-      ondata: function (data) {
-        Janus.debug("We got data from the DataChannel!", data);
+      let params = {
+        plugin: "janus.plugin.videoroom",
+        success: function (pluginHandle) {
+          // Plugin attached! 'pluginHandle' is our handle
+          console.log("pluginHandle", pluginHandle);
 
-        let json = JSON.parse(data);
-        let transaction = json["transaction"];
-        if (transactions[transaction]) {
-          // Someone was waiting for this
-          transactions[transaction](json);
-          let transactionsNew = transactions;
-          delete transactionsNew[transaction];
-          setTransactions(transactionsNew);
-          return;
-        }
-        let what = json["textroom"];
-        if (what === "message") {
-          // Incoming message: public or private?
-          let msg = escapeXmlTags(json["text"]);
-          let from = json["from"];
-          let dateString = getDateString(json["date"]);
-          let whisper = json["whisper"];
-          if (whisper) {
-            // Private message
-          } else {
-            // Public message
-          }
-        } else if (what === "announcement") {
-          // Room announcement
-          var msg = escapeXmlTags(json["text"]);
-          var dateString = getDateString(json["date"]);
-        } else if (what === "join") {
-          // Somebody joined
-          var username = json["username"];
-          var display = json["display"];
-          participants[username] = escapeXmlTags(display ? display : username);
-          if (username !== myid && !(username in participants)) {
-            // Add to the participants list
-          }
-        } else if (what === "leave") {
-          // Somebody left
-          var username = json["username"];
-          var when = new Date();
-          delete participants[username];
-        } else if (what === "kicked") {
-          // Somebody was kicked
-          var username = json["username"];
-          var when = new Date();
-          delete participants[username];
-          if (username === myid) {
-            console.log("You have been kicked from the room");
-          }
-        } else if (what === "destroyed") {
-          if (json["room"] !== currentRoom) return;
-          // Room was destroyed, goodbye!
-          Janus.warn("The room has been destroyed!");
-        }
-      },
-      oncleanup: function () {
-        // PeerConnection with the plugin closed, clean the UI
-        // The plugin handle is still valid so we can create a new one
-      },
-      detached: function () {
-        // Connection with the plugin closed, get rid of its features
-        // The plugin handle is not valid anymore
-      },
-    };
+          videoRoom = pluginHandle;
+          let body = { request: "setup" };
+          videoRoom.send({ message: body });
 
-    console.log("Attached to current session", session);
-    session.attach(params);
+          console.log("SETUP", { pluginHandle, currentPluginHandle });
+        },
+        error: (cause) => {
+          // Couldn't attach to the plugin
+          console.error(cause);
+        },
+        iceState: function (state) {
+          Janus.log("ICE state changed to " + state);
+        },
+        mediaState: function (medium, on) {
+          Janus.log(
+            "Janus " + (on ? "started" : "stopped") + " receiving our " + medium
+          );
+        },
+        webrtcState: function (on) {
+          Janus.log(
+            "Janus says our WebRTC PeerConnection is " +
+              (on ? "up" : "down") +
+              " now"
+          );
+
+          on ? resolve(videoRoom) : reject(videoRoom);
+        },
+        consentDialog: function (on) {
+          // e.g., Darken the screen if on=true (getUserMedia incoming), restore it otherwise
+        },
+        onmessage: function (msg, jsep) {
+          // We got a message/event (msg) from the plugin
+          // If jsep is not null, this involves a WebRTC negotiation
+          if (msg["error"]) {
+            console.error("Onmessage", msg["error"]);
+          }
+          if (jsep) {
+            // Answer
+            videoRoom.createAnswer({
+              jsep: jsep,
+              media: { audio: false, video: false, data: true }, // We only use datachannels
+              success: function (jsep) {
+                Janus.debug("Got SDP!", jsep);
+                let body = { request: "ack" };
+                videoRoom.send({ message: body, jsep: jsep });
+              },
+              error: function (error) {
+                Janus.error("WebRTC error:", error);
+              },
+            });
+          }
+        },
+        ondataopen: function (data) {
+          Janus.log("The DataChannel is available!");
+          // Prompt for a display name to join the default room
+        },
+        ondata: function (data) {
+          Janus.debug("We got data from the DataChannel!", data);
+
+          let json = JSON.parse(data);
+          let transaction = json["transaction"];
+          // transactionsNow = transactions;
+          // console.log({ transactionsNow, transaction });
+          // if (handleIncomingTransaction(transaction, json)) 7;
+          console.log("Execute transaction", { transactionsTemp });
+          if (transaction && transactionsTemp[transaction]) {
+            // Someone was waiting for this
+            // let transactionsNew = transactions;
+            transactionsTemp[transaction](json);
+            delete transactionsTemp[transaction];
+            // delete transactionsNew[transaction];
+            setTransactions(transactionsTemp);
+
+            return;
+          }
+          let what = json["videoroom"];
+          if (what === "message") {
+            // Incoming message: public or private?
+            let msg = escapeXmlTags(json["text"]);
+            let from = json["from"];
+            let dateString = json["date"];
+            let whisper = json["whisper"];
+            if (whisper) {
+              // Private message
+              console.log("Private message", msg);
+            } else {
+              // Public message
+              console.log("Public message", msg);
+            }
+
+            // Save the message to a database
+            // let messagesUpdated = messages;
+            let newMessage = {
+              text: msg,
+              author: from,
+              timestamp: dateString,
+            };
+            setMessages((prevMessages) => {
+              return [...prevMessages, newMessage];
+            });
+          } else if (what === "announcement") {
+            // Room announcement
+            let msg = escapeXmlTags(json["text"]);
+            let dateString = getDateString(json["date"]);
+          } else if (what === "join") {
+            // Somebody joined
+            let username = json["username"];
+            let display = json["display"];
+            // let participantsNew = participants ? participants : {};
+            // participantsNew[username] = escapeXmlTags(
+            //   display ? display : username
+            // );
+            let newParticipantObject = {};
+            let newParticipantValue = escapeXmlTags(
+              display ? display : username
+            );
+            // newParticipantObject[username] = escapeXmlTags(
+            //   display ? display : username
+            // );
+            console.log({ newParticipantObject });
+            setParticipants((prevParticipants) => {
+              return {
+                ...prevParticipants,
+                [username]: newParticipantValue,
+              };
+            });
+
+            // if (username !== myid && !(username in participants)) {
+            //   // Add to the participants list
+            // }
+          } else if (what === "leave") {
+            // Somebody left
+            let username = json["username"];
+            let when = new Date();
+            // let participantsNew = participants;
+            // delete participantsNew[username];
+            setParticipants((prevParticipants) => {
+              delete prevParticipants[username];
+              return {
+                ...prevParticipants,
+              };
+            });
+          } else if (what === "kicked") {
+            // Somebody was kicked
+            let username = json["username"];
+            let when = new Date();
+            // let participantsNew = participants;
+            // delete participantsNew[username];
+            // setParticipants(participantsNew);
+            setParticipants((prevParticipants) => {
+              delete prevParticipants[username];
+              return {
+                ...prevParticipants,
+              };
+            });
+            if (username === myid) {
+              console.log("You have been kicked from the room");
+            }
+          } else if (what === "destroyed") {
+            if (json["room"] !== currentRoom) return;
+            // Room was destroyed, goodbye!
+            Janus.warn("The room has been destroyed!");
+          }
+        },
+        oncleanup: function () {
+          // PeerConnection with the plugin closed, clean the UI
+          // The plugin handle is still valid so we can create a new one
+        },
+        detached: function () {
+          // Connection with the plugin closed, get rid of its features
+          // The plugin handle is not valid anymore
+        },
+      };
+
+      console.log("Attached to current session", session);
+      session.attach(params);
+    });
   };
 
   // Helper to escape XML tags
@@ -550,6 +610,7 @@ export const JanusProvider = ({ children }) => {
   };
 
   // Function to send data through data channel
+  // TODO change to videoroom plugin (probably only name change)
   const sendData = (data) => {
     let pluginHandle = currentPluginHandle;
     if (data === "") {
@@ -877,6 +938,209 @@ export const JanusProvider = ({ children }) => {
       },
       success: (res) => {
         console.log("CREATED ROOM", res);
+      },
+    });
+  };
+
+  const joinVideoRoom = (roomId) => {
+    let pluginHandle = currentPluginHandle;
+    if (!myusername) {
+      return;
+    }
+    let transaction = randomString(12);
+    let join = {
+      request: "join",
+      transaction: transaction,
+      room: roomId,
+      id: myid,
+      display: myusername,
+      ptype: "publisher",
+    };
+    console.log({ join });
+
+    const transactionFunc = (response) => {
+      console.log({ response });
+      if (response["videoroom"] === "event") {
+        // Something went wrong
+        if (response["error_code"] === 417) {
+          console.error("No room with that code");
+        } else if (
+          response["error_code"] == 420 ||
+          response["error_code"] == 421
+        ) {
+          console.log("Already logged in");
+          setCurrentRoom(roomId);
+        } else {
+          console.error(response["error"]);
+        }
+        return;
+      }
+
+      // We're in
+      setCurrentRoom(roomId);
+
+      // Add myself to overall participants
+      addToRoomParticipants(roomId);
+
+      // TODO needed???
+      // Any participants already in?
+      console.log("Participants:", response.attendees);
+      if (response?.participants && response?.participants?.length > 0) {
+        let joinedParticipants = {};
+
+        for (let i in response.participants) {
+          let p = response.participants[i];
+
+          let newParticipantObject = {};
+          let newParticipantValue = escapeXmlTags(
+            p.display ? p.display : p.username
+          );
+          // newParticipantObject[p.username] = escapeXmlTags(
+          //   p.display ? p.display : p.username
+          // );
+          joinedParticipants = {
+            ...joinedParticipants,
+            [p.username]: newParticipantValue,
+          };
+
+          if (p.username !== myid) {
+            // Send private message as joined participant
+            sendPrivateMsg(p.username);
+          }
+        }
+
+        // Add new participants to state
+        setParticipants((prevParticipants) => {
+          return {
+            ...prevParticipants,
+            ...joinedParticipants,
+          };
+        });
+      }
+    };
+
+    transactionsTemp = {
+      ...transactions,
+      [transaction]: transactionFunc,
+    };
+
+    setTransactions((prevTransactions) => {
+      return {
+        ...transactions,
+        [transaction]: transactionFunc,
+      };
+    });
+
+    pluginHandle.data({
+      text: JSON.stringify(join),
+      error: function (reason) {
+        console.error(reason);
+      },
+      success: (res) => {
+        console.log("JOINED CORRECTLY", res);
+      },
+    });
+  };
+
+  const createVideoRoom = (description = "Room") => {
+    let pluginHandle = currentPluginHandle;
+
+    let transaction = randomString(12);
+    let create = {
+      videoroom: "create",
+      transaction: transaction,
+      history: 0,
+      permanent: true,
+    };
+
+    descriptionTemp = description;
+
+    const transactionFunc = (response) => {
+      console.log({ response });
+      if (response["videoroom"] === "error") {
+        // Something went wrong
+        if (response["error_code"] === 417) {
+          console.error("No room with that code");
+        } else {
+          console.error(response["error"]);
+        }
+        return;
+      }
+
+      if (!response["permanent"]) {
+        console.error("Could not save to config file: Permissions problems");
+        return;
+      }
+
+      // Room created correctly
+      // setCurrentRoom(response["room"]);
+      addUserRoom(response["room"]);
+
+      console.log({ response, descriptionTemp });
+
+      // Add Room to list of rooms
+      addRoomToList({
+        roomId: response["room"],
+        description: descriptionTemp,
+      });
+
+      descriptionTemp = "";
+    };
+
+    transactionsTemp = {
+      ...transactions,
+      [transaction]: transactionFunc,
+    };
+
+    setTransactions((prevTransactions) => {
+      return {
+        ...transactions,
+        [transaction]: transactionFunc,
+      };
+    });
+
+    pluginHandle.data({
+      text: JSON.stringify(create),
+      error: function (reason) {
+        console.log({ reason });
+        console.error(reason);
+      },
+      success: (res) => {
+        console.log("CREATED ROOM", res);
+      },
+    });
+  };
+
+  const sendMediaData = () => {
+    let pluginHandle = currentPluginHandle;
+
+    let publish = {
+      publish: "message",
+      transaction: randomString(12),
+      // room: currentRoom,
+      // text: data,
+    };
+
+    // Note: messages are always acknowledged by default. This means that you'll
+    // always receive a confirmation back that the message has been received by the
+    // server and forwarded to the recipients. If you do not want this to happen,
+    // just add an ack:false property to the message above, and server won't send
+    // you a response (meaning you just have to hope it succeeded).
+    pluginHandle.data({
+      text: JSON.stringify(message),
+      error: (reason) => {
+        console.log(reason);
+      },
+      success: () => {
+        // Update message with info
+        // let messageModel = {
+        //   ...message,
+        //   date: Date.now(),
+        //   whisper: false,
+        //   from: myid,
+        // };
+        // // Save message to database
+        // appendMessage(messageModel);
       },
     });
   };
