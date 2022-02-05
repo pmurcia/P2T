@@ -55,6 +55,7 @@ export const JanusProvider = ({ children }) => {
   const [localTracks, setLocalTracks] = useState({});
   const [localVideos, setLocalVideos] = useState(0);
   const [mypvtid, setMyPvtId] = useState(null);
+  const [remoteStream, setRemoteStream] = useState();
 
   let bitrateTimer = useRef(null);
 
@@ -423,6 +424,7 @@ export const JanusProvider = ({ children }) => {
               " now"
           );
 
+          // setCurrentPluginHandle(videoRoom);
           // on ? resolve(videoRoom) : reject(videoRoom);
         },
         consentDialog: function (on) {
@@ -436,7 +438,20 @@ export const JanusProvider = ({ children }) => {
           }
           Janus.debug(" ::: Got a message (publisher) :::", msg);
           let transaction = msg["transaction"];
-          console.log("Execute transaction", { transactionsTemp });
+          console.log("Execute transaction", { transactionsTemp, transaction });
+
+          // Special case of join
+          if (
+            msg["videoroom"] == "joined" &&
+            Object.keys(transactionsTemp).length > 0
+          ) {
+            let id = Object.keys(transactionsTemp)[0];
+            transactionsTemp[id](msg);
+            delete transactionsTemp[transaction];
+            setTransactions(transactionsTemp);
+            return;
+          }
+
           if (transaction && transactionsTemp[transaction]) {
             // Someone was waiting for this
             // let transactionsNew = transactions;
@@ -788,7 +803,7 @@ export const JanusProvider = ({ children }) => {
 
             return;
           }
-          let what = json["videoroom"];
+          let what = json["textroom"];
           if (what === "message") {
             // Incoming message: public or private?
             let msg = escapeXmlTags(json["text"]);
@@ -947,12 +962,14 @@ export const JanusProvider = ({ children }) => {
       // bootbox.alert('Insert a message to send on the DataChannel');
       return;
     }
-    let message = {
+    let json = {
       textroom: "message",
       transaction: randomString(12),
       room: currentRoom,
       text: data,
     };
+
+    console.log({ json, data });
 
     // Note: messages are always acknowledged by default. This means that you'll
     // always receive a confirmation back that the message has been received by the
@@ -960,18 +977,50 @@ export const JanusProvider = ({ children }) => {
     // just add an ack:false property to the message above, and server won't send
     // you a response (meaning you just have to hope it succeeded).
     pluginHandle.data({
-      text: JSON.stringify(message),
+      text: JSON.stringify(json),
       error: (reason) => {
         console.log(reason);
       },
       success: () => {
-        // Update message with info
         let messageModel = {
-          ...message,
-          date: Date.now(),
-          whisper: false,
-          from: myid,
+          ...json,
         };
+        let what = json["textroom"];
+
+        // Update message with info
+        if (what === "message") {
+          // Incoming message: public or private?
+          let msg = escapeXmlTags(json["text"]);
+          let from = myid;
+          let dateString = Date.now();
+          let whisper = false;
+          // Public message
+          console.log("Public message", msg);
+
+          // Prepare message to save to database
+          messageModel = {
+            ...messageModel,
+            date: dateString,
+            from: from,
+            whisper: whisper,
+          };
+
+          // Save to current messages
+          // let messagesUpdated = messages;
+          let newMessage = {
+            text: msg,
+            author: from,
+            timestamp: dateString,
+          };
+          setMessages((prevMessages) => {
+            return [...prevMessages, newMessage];
+          });
+        } else if (what === "announcement") {
+          // Room announcement
+          let msg = escapeXmlTags(json["text"]);
+          let dateString = getDateString(json["date"]);
+        }
+
         // Save message to database
         appendMessage(messageModel);
       },
@@ -1280,7 +1329,7 @@ export const JanusProvider = ({ children }) => {
     let transaction = randomString(12);
     let join = {
       request: "join",
-      // transaction: transaction,
+      transaction: transaction,
       room: roomId,
       // id: myid,
       display: myusername,
@@ -1441,6 +1490,7 @@ export const JanusProvider = ({ children }) => {
         videoRecv: false,
         audioSend: useAudio,
         videoSend: useVideo,
+        data: true,
       }, // Publishers are sendonly
       // If you want to test simulcasting (Chrome and Firefox only), then
       // pass a ?simulcast=true when opening this demo page: it will turn
@@ -1651,8 +1701,7 @@ export const JanusProvider = ({ children }) => {
             jsep: jsep,
             // Add data:true here if you want to subscribe to datachannels as well
             // (obviously only works if the publisher offered them in the first place)
-            data: true,
-            media: { audioSend: false, videoSend: false }, // We want recvonly audio/video
+            media: { audioSend: false, videoSend: false, data: true }, // We want recvonly audio/video
             customizeSdp: function (jsep) {
               if (stereo && jsep.sdp.indexOf("stereo=1") == -1) {
                 // Make sure that our offer contains stereo too
@@ -1749,6 +1798,7 @@ export const JanusProvider = ({ children }) => {
           //   $("#remotevideo" + remoteFeed.rfindex + "-" + mid).get(0),
           //   stream
           // );
+          setRemoteStream(stream);
           if (remoteFeed.remoteVideos === 0) {
             // No video, at least for now: show a placeholder
             // if (
@@ -1793,6 +1843,7 @@ export const JanusProvider = ({ children }) => {
           //   $("#remotevideo" + remoteFeed.rfindex + "-" + mid).get(0),
           //   stream
           // );
+          setRemoteStream(stream);
           // Note: we'll need this for additional videos too
           if (!bitrateTimer[remoteFeed.rfindex]) {
             // $("#curbitrate" + remoteFeed.rfindex)
@@ -1856,7 +1907,9 @@ export const JanusProvider = ({ children }) => {
         joinVideoRoom,
         createVideoRoom,
         publishOwnFeed,
-        unpublishOwnFeed
+        unpublishOwnFeed,
+        remoteStream,
+        localTracks,
       }}
     >
       {children}

@@ -94,6 +94,7 @@ export default function ChatsLayout() {
   useEffect(() => {
     console.log(`CAN${canTalk ? "" : "NOT"} TALK`);
     if (canTalk) {
+      publishOwnFeed(false, false);
       talkTimerRef.current = setTimeout(() => {
         console.log("You took to much time to finish");
         unpublishOwnFeed();
@@ -123,17 +124,17 @@ export default function ChatsLayout() {
 
   // Send message
   const handleClick = (e) => {
-    publishOwnFeed(true, true);
-    // console.log("Sending message");
-    // let message = messageInput.current.value;
-    // if (message) {
-    //   console.log(message);
-    //   // Send message
-    //   sendData(message);
-    //   removeFromQueue(currentRoom);
-    //   // Message sent
-    //   messageInput.current.value = "";
-    // }
+    // publishOwnFeed(true, true);
+    console.log("Sending message");
+    let message = messageInput.current.value;
+    if (message) {
+      console.log(message);
+      // Send message
+      sendData(message);
+      removeFromQueue(currentRoom);
+      // Message sent
+      messageInput.current.value = "";
+    }
   };
 
   const handleActivityClick = (e) => {
@@ -263,7 +264,10 @@ export default function ChatsLayout() {
                       <ListItem
                         button
                         key={roomId}
-                        onClick={() => joinVideoRoom(roomId)}
+                        onClick={() => {
+                          console.log({ roomId });
+                          joinVideoRoom(roomId);
+                        }}
                       >
                         <ListItemIcon>
                           <Avatar
