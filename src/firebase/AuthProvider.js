@@ -11,15 +11,20 @@ export const AuthProvider = ({ children }) => {
   const [googleProvider, setGoogleProvider] = useState(null);
 
   useEffect(() => {
+    console.log("starting provider");
     let provider = googleMainProvider;
+    console.log({ provider });
     provider.setCustomParameters({
       prompt: "select_account",
     });
+    console.log({ provider });
     setGoogleProvider(provider);
 
     onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setShowChild(true);
+      if (user) {
+        setUser(user);
+        setShowChild(true);
+      }
     });
   }, []);
 

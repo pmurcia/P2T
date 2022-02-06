@@ -18,6 +18,8 @@ import {
   Box,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
+import MicIcon from "@mui/icons-material/Mic";
+import VideocamIcon from "@mui/icons-material/Videocam";
 import { makeStyles } from "@mui/styles";
 import { JanusContext } from "../janus/JanusProvider";
 import Message from "../Chats/Message";
@@ -56,10 +58,12 @@ export default function ChatsLayout() {
     messages,
     currentRoom,
     participants,
-    joinRoom,
     joinVideoRoom,
     publishOwnFeed,
     unpublishOwnFeed,
+    localTracks,
+    remoteStream,
+    localStream,
   } = useContext(JanusContext);
   const { user } = useContext(AuthContext);
   const {
@@ -75,15 +79,49 @@ export default function ChatsLayout() {
   const [myRooms, setMyRooms] = useState();
 
   let messageInput = useRef(null);
-  let messagesEnd = useRef();
+  let messagesEnd = useRef(null);
   let talkTimerRef = useRef(null);
+  const videoElement = useRef(null);
 
   const classes = useStyles();
 
   useEffect(() => {
+    console.log("New local stream", { localStream });
+    console.log("New remote stream", { remoteStream });
+
+    let isEmptyLocalStream =
+      localStream &&
+      Object.keys(localStream).length === 0 &&
+      Object.getPrototypeOf(localStream) === Object.prototype;
+    let isEmptyRemoteStream =
+      remoteStream &&
+      Object.keys(remoteStream).length === 0 &&
+      Object.getPrototypeOf(remoteStream) === Object.prototype;
+
+    console.log({ isEmptyLocalStream, isEmptyRemoteStream });
+
+    if (videoElement?.current) {
+      if (!isEmptyLocalStream && isEmptyRemoteStream) {
+        videoElement.current.srcObject = localStream;
+        console.log("Adding local source");
+      } else if (isEmptyLocalStream && !isEmptyRemoteStream) {
+        videoElement.current.srcObject = remoteStream;
+        console.log("Adding remote source");
+      } else {
+        videoElement.current.srcObject = null;
+        console.log("Removing video source");
+      }
+      // console.log(videoElement.current);
+    }
+  }, [localStream, remoteStream]);
+
+  useEffect(() => {
     // Clear interval when the component unmounts
-    return () => clearTimeout(talkTimerRef.current);
-  });
+    return () => {
+      clearTimeout(talkTimerRef.current);
+      if (currentRoom) removeFromQueue(currentRoom);
+    };
+  }, []);
 
   useEffect(() => {
     console.log("UPDATED ROOMS INFO IN CHATS LAYOUT", isMyTurn(currentRoom));
@@ -94,7 +132,8 @@ export default function ChatsLayout() {
   useEffect(() => {
     console.log(`CAN${canTalk ? "" : "NOT"} TALK`);
     if (canTalk) {
-      publishOwnFeed(false, false);
+      console.log("CAN TALK PUBLISH OWN FEED");
+      publishOwnFeed(true, true);
       talkTimerRef.current = setTimeout(() => {
         console.log("You took to much time to finish");
         unpublishOwnFeed();
@@ -107,7 +146,7 @@ export default function ChatsLayout() {
 
   useEffect(() => {
     console.log("Chat messages", messages);
-    scrollToBottom();
+    if (currentRoom) scrollToBottom();
   }, [messages]);
 
   useEffect(() => {
@@ -119,11 +158,11 @@ export default function ChatsLayout() {
   }, [usersInfo]);
 
   const scrollToBottom = () => {
-    messagesEnd.scrollIntoView({ behavior: "smooth" });
+    if (messagesEnd) messagesEnd.scrollIntoView({ behavior: "smooth" });
   };
 
   // Send message
-  const handleClick = (e) => {
+  const sendMessage = (e) => {
     // publishOwnFeed(true, true);
     console.log("Sending message");
     let message = messageInput.current.value;
@@ -135,6 +174,8 @@ export default function ChatsLayout() {
       // Message sent
       messageInput.current.value = "";
     }
+
+    unpublishOwnFeed();
   };
 
   const handleActivityClick = (e) => {
@@ -151,7 +192,7 @@ export default function ChatsLayout() {
   const checkEnter = (e) => {
     let theCode = e.keyCode ? e.keyCode : e.which ? e.which : e.charCode;
     if (theCode == 13) {
-      handleClick();
+      sendMessage();
     } else {
       clearTimeout(talkTimerRef.current);
       talkTimerRef.current = setTimeout(() => {
@@ -227,9 +268,7 @@ export default function ChatsLayout() {
         <Grid container component={Paper} className={classes.chatSection}>
           <Grid item xs={3} className={classes.borderRight500}>
             <ProfileMenu user={user} />
-
             <Divider />
-
             {/* Search function */}
             <Grid item xs={12} style={{ padding: "10px" }}>
               <TextField
@@ -239,9 +278,7 @@ export default function ChatsLayout() {
                 fullWidth
               />
             </Grid>
-
             <Divider />
-
             {/* Join or create buttons */}
             <Grid container item xs={12} style={{ padding: "10px" }}>
               <Grid item xs={6} style={{ padding: "10px" }}>
@@ -252,7 +289,6 @@ export default function ChatsLayout() {
                 <JoinRoomButton />
               </Grid>
             </Grid>
-
             <Divider />
 
             {/* Rooms that user joined */}
@@ -289,75 +325,102 @@ export default function ChatsLayout() {
 
           <Grid item xs={7}>
             {/**** Message History *****/}
-            <List className={classes.messageArea}>
-              {messages &&
-                messages.map(({ text, author, timestamp }, index) => (
-                  <ListItem key={index} autoFocus={index === messages.length}>
-                    <Message author={author} timestamp={timestamp}>
-                      {text}
-                    </Message>
-                  </ListItem>
-                ))}
-              <div
-                style={{ float: "left", clear: "both" }}
-                ref={(el) => {
-                  messagesEnd = el;
-                }}
-              ></div>
-            </List>
+            {currentRoom && (
+              <>
+                <List className={classes.messageArea}>
+                  {messages &&
+                    messages.map(({ text, author, timestamp }, index) => (
+                      <ListItem
+                        key={index}
+                        autoFocus={index === messages.length}
+                      >
+                        <Message author={author} timestamp={timestamp}>
+                          {text}
+                        </Message>
+                      </ListItem>
+                    ))}
+                  <div
+                    style={{ float: "left", clear: "both" }}
+                    ref={(el) => {
+                      messagesEnd = el;
+                    }}
+                  ></div>
+                </List>
 
-            <Divider />
+                <Message author={getQueueInfo()[0]}>
+                  <video autoPlay ref={videoElement} />
+                </Message>
 
-            <Grid container style={{ padding: "20px" }}>
-              {canTalk && (
-                <>
-                  <Grid item xs={11}>
-                    <TextField
-                      id="message-text"
-                      placeholder="Enter message"
-                      fullWidth
-                      inputRef={messageInput}
-                      onKeyPress={checkEnter}
-                      disabled={!canTalk}
-                      autoFocus={canTalk}
-                    />
-                  </Grid>
-                  <Grid item xs={1} align="right">
-                    <IconButton
-                      variant="contained"
-                      color="primary"
-                      aria-label="add"
-                      onClick={handleClick}
-                    >
-                      <SendIcon />
-                    </IconButton>
-                  </Grid>
-                </>
-              )}
-              {!canTalk && (
-                <>
-                  <Button
-                    variant="contained"
-                    color={isOnQueue(currentRoom) ? "warning" : "primary"}
-                    aria-label="request-write"
-                    onClick={handleActivityClick}
-                    fullWidth
-                  >
-                    {isOnQueue(currentRoom) ? (
-                      <>
-                        <CircularProgress
-                          sx={{
-                            color: "white",
-                          }}
+                <Divider />
+
+                <Grid container style={{ padding: "20px" }}>
+                  {canTalk && (
+                    <>
+                      <Grid item xs={9}>
+                        <TextField
+                          id="message-text"
+                          placeholder="Enter message"
+                          fullWidth
+                          inputRef={messageInput}
+                          onKeyPress={checkEnter}
+                          disabled={!canTalk}
+                          autoFocus={canTalk}
                         />
-                      </>
-                    ) : (
-                      "Request to talk"
-                    )}
-                  </Button>
-                </>
-              )}
-            </Grid>
+                      </Grid>
+                      <Grid item xs={3} align="right">
+                        <IconButton
+                          variant="contained"
+                          color="primary"
+                          aria-label="audio"
+                          // onClick={publishOwnFeed(true, true)}
+                        >
+                          <MicIcon />
+                        </IconButton>
+                        <IconButton
+                          variant="contained"
+                          color="primary"
+                          aria-label="video"
+                          // onClick={publishOwnFeed(true, true)}
+                        >
+                          <VideocamIcon />
+                        </IconButton>
+                        <IconButton
+                          variant="contained"
+                          color="primary"
+                          aria-label="message"
+                          onClick={sendMessage}
+                        >
+                          <SendIcon />
+                        </IconButton>
+                      </Grid>
+                    </>
+                  )}
+                  {!canTalk && (
+                    <>
+                      <Button
+                        variant="contained"
+                        color={isOnQueue(currentRoom) ? "warning" : "primary"}
+                        aria-label="request-write"
+                        onClick={handleActivityClick}
+                        fullWidth
+                      >
+                        {isOnQueue(currentRoom) ? (
+                          <>
+                            <CircularProgress
+                              sx={{
+                                color: "white",
+                              }}
+                            />
+                          </>
+                        ) : (
+                          "Request to talk"
+                        )}
+                      </Button>
+                    </>
+                  )}
+                </Grid>
+              </>
+            )}
           </Grid>
 
           <Grid item xs={2} className={classes.borderLeft500}>
@@ -418,7 +481,7 @@ function ModalDialog({ open }) {
 }
 
 function CreateRoomButton() {
-  const { createRoom, createVideoRoom } = useContext(JanusContext);
+  const { createVideoRoom } = useContext(JanusContext);
   const handleClick = () => {
     createVideoRoom();
   };
@@ -437,8 +500,10 @@ function CreateRoomButton() {
 }
 
 function JoinRoomButton() {
+  const { joinVideoRoom } = useContext(JanusContext);
   const handleClick = () => {
-    console.log("JOIN ROOM");
+    let roomNumber = window.prompt("Please type in the room number");
+    joinVideoRoom(parseInt(roomNumber));
   };
 
   return (

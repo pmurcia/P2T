@@ -87,9 +87,11 @@ export const DatabaseProvider = ({ children }) => {
       onChildAdded(refForUsers, (data) => {
         if (data) {
           console.log("CHILD ADDED", data);
-          setUsersInfo({
-            ...usersInfo,
-            [data.key]: data.val(),
+          setUsersInfo((prev) => {
+            return {
+              ...prev,
+              [data.key]: data.val(),
+            };
           });
         }
       });
@@ -97,9 +99,11 @@ export const DatabaseProvider = ({ children }) => {
       onChildChanged(refForUsers, (data) => {
         if (data) {
           console.log("CHILD CHANGED", data);
-          setUsersInfo({
-            ...usersInfo,
-            [data.key]: data.val(),
+          setUsersInfo((prev) => {
+            return {
+              ...prev,
+              [data.key]: data.val(),
+            };
           });
         }
       });
@@ -201,6 +205,11 @@ export const DatabaseProvider = ({ children }) => {
     remove(queueRef);
   };
 
+  const saveUserVideoRoomId = (id) => {
+    let databaseRef = ref(database, `users/${user.uid}/videoRoomId`);
+    set(databaseRef, id);
+  };
+
   const addRoomToList = ({ roomId, description }) => {
     let databaseRef = ref(database, `rooms/${roomId}/description`);
     set(databaseRef, description);
@@ -244,6 +253,7 @@ export const DatabaseProvider = ({ children }) => {
             usersInfo,
             addRoomToList,
             removeRoomFromList,
+            saveUserVideoRoomId,
           }}
         >
           {children}
