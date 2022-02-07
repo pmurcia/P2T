@@ -1,3 +1,4 @@
+import { DataObjectOutlined } from "@mui/icons-material";
 import React, {
   createContext,
   useContext,
@@ -35,6 +36,13 @@ export const JanusProvider = ({ children }) => {
   const [participants, setParticipants] = useState({});
   const [messages, setMessages] = useState([]);
 
+  const [audioOn, setAudioOn] = useState(false);
+  const [videoOn, setVideoOn] = useState(false);
+
+  useEffect(() => {
+    console.log({ audioOn, videoOn });
+  }, [audioOn, videoOn]);
+
   // USER INFORMATION
   const { user } = useContext(AuthContext);
   const {
@@ -71,14 +79,30 @@ export const JanusProvider = ({ children }) => {
   const defaultDependencies = Janus.useDefaultDependencies();
 
   useEffect(() => {
-    console.log("Connecting to room", currentRoom);
-    tempRoom = currentRoom;
-    let messagesRaw = roomsInfo[currentRoom]?.messages;
-    let messagesTemp = messagesRaw ? Object.values(messagesRaw) : [];
-    console.log({ roomsInfo, messagesTemp });
-    messagesTemp = messagesTemp.map((message) => parseMessage(message));
-    console.log({ roomsInfo, messagesTemp });
-    setMessages(messagesTemp);
+    if (currentRoom) {
+      console.log("Connecting to room", currentRoom);
+      tempRoom = currentRoom;
+      let messagesRaw = roomsInfo[currentRoom]?.messages;
+      let messagesTemp = messagesRaw ? Object.values(messagesRaw) : [];
+      console.log({ roomsInfo, messagesTemp });
+      messagesTemp = messagesTemp.map((message) => parseMessage(message));
+      console.log({ roomsInfo, messagesTemp });
+      setMessages(messagesTemp);
+
+      let roomParticipants = roomsInfo[currentRoom]?.participants;
+      console.log({ roomParticipants });
+      let mappedParticipants = {};
+
+      if (roomParticipants) {
+        for (let p in roomParticipants) {
+          mappedParticipants = {
+            ...mappedParticipants,
+            [p]: roomParticipants[p]["display"],
+          };
+        }
+        setParticipants(mappedParticipants);
+      }
+    }
   }, [currentRoom]);
 
   const parseMessage = ({ text, from, date }) => {
@@ -1260,6 +1284,9 @@ export const JanusProvider = ({ children }) => {
           message: publish,
           jsep: jsep,
         });
+
+        if (!audioOn) pluginHandle.muteAudio();
+        if (!videoOn) pluginHandle.muteVideo();
       },
       error: function (error) {
         Janus.error("WebRTC error:", error);
@@ -1735,6 +1762,24 @@ export const JanusProvider = ({ children }) => {
     });
   };
 
+  const toggleAudio = () => {
+    console.log("toggleAudio", currentPluginHandle.isAudioMuted());
+    let muted = currentPluginHandle.isAudioMuted();
+    Janus.log((muted ? "Unmuting" : "Muting") + " local stream...");
+    if (muted) currentPluginHandle.unmuteAudio();
+    else currentPluginHandle.muteAudio();
+    setAudioOn(currentPluginHandle.isAudioMuted());
+  };
+
+  const toggleVideo = () => {
+    console.log("toggleVideo", currentPluginHandle.isVideoMuted());
+    let muted = currentPluginHandle.isVideoMuted();
+    Janus.log((muted ? "Unmuting" : "Muting") + " local stream...");
+    if (muted) currentPluginHandle.unmuteVideo();
+    else currentPluginHandle.muteVideo();
+    setVideoOn(currentPluginHandle.isVideoMuted());
+  };
+
   return (
     <JanusContext.Provider
       value={{
@@ -1751,6 +1796,10 @@ export const JanusProvider = ({ children }) => {
         remoteStream,
         localTracks,
         localStream,
+        toggleAudio,
+        toggleVideo,
+        audioOn,
+        videoOn,
       }}
     >
       {children}

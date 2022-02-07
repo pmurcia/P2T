@@ -19,7 +19,9 @@ import {
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import MicIcon from "@mui/icons-material/Mic";
+import MicOffIcon from "@mui/icons-material/MicOff";
 import VideocamIcon from "@mui/icons-material/Videocam";
+import VideocamOffIcon from "@mui/icons-material/VideocamOff";
 import { makeStyles } from "@mui/styles";
 import { JanusContext } from "../janus/JanusProvider";
 import Message from "../Chats/Message";
@@ -64,6 +66,10 @@ export default function ChatsLayout() {
     localTracks,
     remoteStream,
     localStream,
+    toggleAudio,
+    toggleVideo,
+    audioOn,
+    videoOn,
   } = useContext(JanusContext);
   const { user } = useContext(AuthContext);
   const {
@@ -77,6 +83,14 @@ export default function ChatsLayout() {
 
   const [canTalk, setCanTalk] = useState(false);
   const [myRooms, setMyRooms] = useState();
+
+  const [audioPlaying, setAudioPlaying] = useState(audioOn);
+  const [videoPlaying, setVideoPlaying] = useState(videoOn);
+
+  useEffect(() => {
+    setAudioPlaying(audioOn);
+    setVideoPlaying(videoOn);
+  }, [audioOn, videoOn]);
 
   let messageInput = useRef(null);
   let messagesEnd = useRef(null);
@@ -364,7 +378,7 @@ export default function ChatsLayout() {
                           inputRef={messageInput}
                           onKeyPress={checkEnter}
                           disabled={!canTalk}
-                          autoFocus={canTalk}
+                          // autoFocus={canTalk}
                         />
                       </Grid>
                       <Grid item xs={3} align="right">
@@ -372,17 +386,39 @@ export default function ChatsLayout() {
                           variant="contained"
                           color="primary"
                           aria-label="audio"
-                          // onClick={publishOwnFeed(true, true)}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            toggleAudio();
+                          }}
                         >
-                          <MicIcon />
+                          {audioPlaying ? (
+                            <>
+                              <MicIcon />
+                            </>
+                          ) : (
+                            <>
+                              <MicOffIcon />
+                            </>
+                          )}
                         </IconButton>
                         <IconButton
                           variant="contained"
                           color="primary"
                           aria-label="video"
-                          // onClick={publishOwnFeed(true, true)}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            toggleVideo();
+                          }}
                         >
-                          <VideocamIcon />
+                          {videoPlaying ? (
+                            <>
+                              <VideocamIcon />
+                            </>
+                          ) : (
+                            <>
+                              <VideocamOffIcon />
+                            </>
+                          )}
                         </IconButton>
                         <IconButton
                           variant="contained"
