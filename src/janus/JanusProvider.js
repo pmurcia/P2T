@@ -19,6 +19,7 @@ let remoteFeed = null;
 let tempRoom = 0;
 let tempmypvtid = 0;
 let publisherId = 0;
+let tempNewRoom = null;
 
 export const JanusProvider = ({ children }) => {
   // STATE MANAGEMENT
@@ -72,6 +73,7 @@ export const JanusProvider = ({ children }) => {
   const [mypvtid, setMyPvtId] = useState(null);
   const [remoteStream, setRemoteStream] = useState({});
   const [localStream, setLocalStream] = useState({});
+  const [isCommunicating, setIsCommunicating] = useState(false);
 
   let bitrateTimer = useRef(null);
 
@@ -104,6 +106,27 @@ export const JanusProvider = ({ children }) => {
       }
     }
   }, [currentRoom]);
+
+  useEffect(() => {
+    if (currentRoom) {
+      console.log("Connecting to room", currentRoom);
+      tempRoom = currentRoom;
+
+      let roomParticipants = roomsInfo[currentRoom]?.participants;
+      console.log({ roomParticipants });
+      let mappedParticipants = {};
+
+      if (roomParticipants) {
+        for (let p in roomParticipants) {
+          mappedParticipants = {
+            ...mappedParticipants,
+            [p]: roomParticipants[p]["display"],
+          };
+        }
+        setParticipants(mappedParticipants);
+      }
+    }
+  }, [roomsInfo]);
 
   const parseMessage = ({ text, from, date }) => {
     let msg = escapeXmlTags(text);
@@ -138,21 +161,12 @@ export const JanusProvider = ({ children }) => {
         let session = await createSession();
         if (session) {
           let pluginHandle = await attachVideoRoomPlugin(session);
-          if (pluginHandle) addNewPluginHandle(pluginHandle);
+          if (pluginHandle) await addNewPluginHandle(pluginHandle);
           else console.error(pluginHandle);
         } else {
           console.error(session);
         }
-        // registerUsername(myusrname);
       };
-      // init()
-      //   .then(() => createSession())
-      //   .then((session) => attachVideoRoomPlugin(session))
-      //   .then((pluginHandle) => {
-      //     console.log("INITIALIZATION PLUGIN HANDLE", pluginHandle);
-      //     addNewPluginHandle(pluginHandle);
-      //     // registerUsername(myusername);
-      //   });
       prepareJanus();
     }
   }, [user]);
@@ -308,10 +322,50 @@ export const JanusProvider = ({ children }) => {
             msgPvtId == tempmyid
           ) {
             console.log("Joining room transaction");
-            let id = Object.keys(transactionsTemp)[0];
-            transactionsTemp[id](msg);
+            // Find transaction for joining
+            let transaction;
+            for (let t in transactionsTemp) {
+              if (transactionsTemp[t].name.includes("join")) {
+                transaction = t;
+                break;
+              }
+            }
+
+            transactionsTemp[transaction](msg);
             delete transactionsTemp[transaction];
-            setTransactions(transactionsTemp);
+            setTransactions((prev) => {
+              let newTransactions = prev;
+              delete newTransactions[transaction];
+              return { ...newTransactions };
+            });
+            return;
+          }
+
+          // Special case of leaving
+          if (
+            msg["videoroom"] == "event" &&
+            msg["leaving"] == "ok" &&
+            Object.keys(transactionsTemp).length > 0
+          ) {
+            console.log("Leaving room transaction");
+            // Find transaction for leaving
+            let transaction;
+            for (let t in transactionsTemp) {
+              if (transactionsTemp[t].name.includes("leave")) {
+                transaction = t;
+                break;
+              }
+            }
+
+            console.log({ transactionsTemp, transaction });
+
+            transactionsTemp[transaction](msg);
+            delete transactionsTemp[transaction];
+            setTransactions((prev) => {
+              let newTransactions = prev;
+              delete newTransactions[transaction];
+              return { ...newTransactions };
+            });
             return;
           }
 
@@ -450,6 +504,12 @@ export const JanusProvider = ({ children }) => {
                     ...newFeedStreams,
                   };
                 });
+              } else if (msg["configured"]) {
+                let configured = msg["configured"];
+                if (configured == "ok") {
+                  // That's us
+                  setIsCommunicating(true);
+                }
               } else if (msg["unpublished"]) {
                 // One of the publishers has unpublished?
                 let unpublished = msg["unpublished"];
@@ -457,6 +517,7 @@ export const JanusProvider = ({ children }) => {
                 if (unpublished === "ok") {
                   // That's us
                   videoRoom.hangup();
+                  setIsCommunicating(false);
                   return;
                 }
                 let remoteFeed = null;
@@ -516,39 +577,8 @@ export const JanusProvider = ({ children }) => {
             }
           }
           if (jsep) {
-            // Answer
-            // videoRoom.createAnswer({
-            //   jsep: jsep,
-            //   media: { audio: false, video: false, data: true },
-            //   success: function (jsep) {
-            //     Janus.debug("Got SDP!", jsep);
-            //     let body = { request: "ack" };
-            //     videoRoom.send({ message: body, jsep: jsep });
-            //   },
-            //   error: function (error) {
-            //     Janus.error("WebRTC error:", error);
-            //   },
-            // });
             console.log({ jsep });
             videoRoom.handleRemoteJsep({ jsep: jsep });
-            // videoRoom.createAnswer({
-            //   jsep: jsep,
-            //   media: {
-            //     audioRecv: true,
-            //     videoRecv: true,
-            //     audioSend: false,
-            //     videoSend: false,
-            //     data: true,
-            //   },
-            //   success: function (jsep) {
-            //     Janus.debug("Got SDP!", jsep);
-            //     let body = { request: "ack" };
-            //     videoRoom.send({ message: body, jsep: jsep });
-            //   },
-            //   error: function (error) {
-            //     Janus.error("WebRTC error:", error);
-            //   },
-            // });
           }
         },
         onlocalstream: function (localStream) {
@@ -559,128 +589,20 @@ export const JanusProvider = ({ children }) => {
               ":",
             localStream
           );
-          // We use the track ID as name of the element, but it may contain invalid characters
-          // let trackId = track.id.replace(/[{}]/g, "");
-          // if (!on) {
-          //   // Track removed, get rid of the stream and the rendering
-          //   let stream = localTracks[trackId];
-          //   if (stream) {
-          //     try {
-          //       let tracks = stream.getTracks();
-          //       for (let i in tracks) {
-          //         let mst = tracks[i];
-          //         if (mst !== null && mst !== undefined) mst.stop();
-          //       }
-          //     } catch (e) {}
-          //   }
-          //   if (track.kind === "video") {
-          //     // $("#myvideo" + trackId).remove();
-          //     // localVideos--;
-          //     setLocalVideos(localVideos--);
-          //     if (localVideos === 0) {
-          //       // No video, at least for now: show a placeholder
-          //       // if ($("#videolocal .no-video-container").length === 0) {
-          //       //   $("#videolocal").append(
-          //       //     '<div class="no-video-container">' +
-          //       //       '<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-          //       //       '<span class="no-video-text">No webcam available</span>' +
-          //       //       "</div>"
-          //       //   );
-          //       // }
-          //     }
-          //   }
-          //   delete localTracks[trackId];
-          //   setLocalTracks((prev) => {
-          //     let newLocalTracks = prev;
-          //     delete newLocalTracks[trackId];
-          //     return {
-          //       ...newLocalTracks,
-          //     };
-          //   });
+
+          // if (!localStream) {
+          //   // We've been here already
+          //   console.error("No stream found");
           //   return;
           // }
-          // // If we're here, a new track was added
-          // let stream = localTracks[trackId];
-          if (!localStream) {
-            // We've been here already
-            console.error("No stream found");
-            return;
-          }
-          // $("#videos").removeClass("hide").show();
-          // if ($("#mute").length === 0) {
-          //   // Add a 'mute' button
-          //   $("#videolocal").append(
-          //     '<button class="btn btn-warning btn-xs" id="mute" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;">Mute</button>'
-          //   );
-          //   $("#mute").click(toggleMute);
-          //   // Add an 'unpublish' button
-          //   $("#videolocal").append(
-          //     '<button class="btn btn-warning btn-xs" id="unpublish" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;">Unpublish</button>'
-          //   );
-          //   $("#unpublish").click(unpublishOwnFeed);
-          // }
-          // if (track.kind === "audio") {
-          //   // We ignore local audio tracks, they'd generate echo anyway
-          //   if (localVideos === 0) {
-          //     // No video, at least for now: show a placeholder
-          //     // if ($("#videolocal .no-video-container").length === 0) {
-          //     //   $("#videolocal").append(
-          //     //     '<div class="no-video-container">' +
-          //     //       '<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-          //     //       '<span class="no-video-text">No webcam available</span>' +
-          //     //       "</div>"
-          //     //   );
-          //     // }
-          //   }
-          // } else {
-          //   // New video track: create a stream out of it
-          //   // localVideos++;
-          //   setLocalVideos(localVideos++);
-          //   // $("#videolocal .no-video-container").remove();
-          //   stream = new MediaStream();
-          //   stream.addTrack(track.clone());
-          //   // localTracks[trackId] = stream;
-          //   setLocalTracks((prev) => {
-          //     return {
-          //       ...prev,
-          //       [trackId]: stream,
-          //     };
-          //   });
-          //   Janus.log("Created local stream:", stream);
-          //   Janus.log(stream.getTracks());
-          //   Janus.log(stream.getVideoTracks());
-          //   // $("#videolocal").append(
-          //   //   '<video class="rounded centered" id="myvideo' +
-          //   //     trackId +
-          //   //     '" width=100% autoplay playsinline muted="muted"/>'
-          //   // );
-          //   // TODO Attach media stream to a video element
-          //   // Janus.attachMediaStream($("#myvideo" + trackId).get(0), stream);
-          // }
-          // if (
-          //   videoRoom.webrtcStuff.pc.iceConnectionState !== "completed" &&
-          //   videoRoom.webrtcStuff.pc.iceConnectionState !== "connected"
-          // ) {
-          //   // $("#videolocal")
-          //   //   .parent()
-          //   //   .parent()
-          //   //   .block({
-          //   //     message: "<b>Publishing...</b>",
-          //   //     css: {
-          //   //       border: "none",
-          //   //       backgroundColor: "transparent",
-          //   //       color: "white",
-          //   //     },
-          //   //   });
-          // }
 
-          // We need to remove the audio tracks from the stream, so echo doesn't appear
-          let stream = new MediaStream();
-          let videoTracks = localStream.getVideoTracks();
-          for (let track of videoTracks) {
-            stream.addTrack(track.clone());
-          }
-          setLocalStream(stream.clone());
+          // // We need to remove the audio tracks from the stream, so echo doesn't appear
+          // let stream = new MediaStream();
+          // let videoTracks = localStream.getVideoTracks();
+          // for (let track of videoTracks) {
+          //   stream.addTrack(track.clone());
+          // }
+          // setLocalStream(stream.clone());
         },
         ondataopen: function (data) {
           Janus.log("The DataChannel is available!");
@@ -691,9 +613,7 @@ export const JanusProvider = ({ children }) => {
 
           let json = JSON.parse(data);
           let transaction = json["transaction"];
-          // transactionsNow = transactions;
-          // console.log({ transactionsNow, transaction });
-          // if (handleIncomingTransaction(transaction, json)) 7;
+
           console.log("Execute transaction", { transactionsTemp });
           if (transaction && transactionsTemp[transaction]) {
             // Someone was waiting for this
@@ -1073,11 +993,13 @@ export const JanusProvider = ({ children }) => {
     };
     console.log({ join });
 
+    tempNewRoom = roomId;
+
     console.log({ pvtId });
     tempmyid = pvtId;
 
-    const transactionFunc = (response) => {
-      console.log({ response });
+    const joinTransactionFunc = (response) => {
+      console.log("Inside join transaction function", { response });
 
       if (response["videoroom"] === "event") {
         // Something went wrong
@@ -1114,6 +1036,14 @@ export const JanusProvider = ({ children }) => {
       addToRoomParticipants(roomId, {
         videoRoomId: response["id"],
         videoRoomPrivateId: response["private_id"],
+      });
+
+      // Update description
+      console.log({ descriptionTemp });
+      console.log(descriptionTemp || `Room ${roomId}`);
+      addRoomToList({
+        roomId: response["room"],
+        description: descriptionTemp || `Room ${roomId}`,
       });
 
       setMyPvtId(response["private_id"]);
@@ -1155,14 +1085,14 @@ export const JanusProvider = ({ children }) => {
     };
 
     transactionsTemp = {
-      ...transactions,
-      [transaction]: transactionFunc,
+      ...transactionsTemp,
+      [transaction]: joinTransactionFunc,
     };
 
     setTransactions((prevTransactions) => {
       return {
         ...transactions,
-        [transaction]: transactionFunc,
+        [transaction]: joinTransactionFunc,
       };
     });
 
@@ -1176,9 +1106,11 @@ export const JanusProvider = ({ children }) => {
         console.log("JOINED CORRECTLY", res);
       },
     });
+
+    tempNewRoom = null;
   };
 
-  const createVideoRoom = (description = "Room") => {
+  const createVideoRoom = (description) => {
     let pluginHandle = currentPluginHandle;
 
     console.log({ pluginHandle, currentPluginHandle });
@@ -1187,6 +1119,7 @@ export const JanusProvider = ({ children }) => {
       request: "create",
       permanent: true,
       is_private: true,
+      room: Math.ceil(Math.random() * 1e16) - 1,
     };
 
     descriptionTemp = description;
@@ -1215,9 +1148,11 @@ export const JanusProvider = ({ children }) => {
       console.log({ response, descriptionTemp });
 
       // Add Room to list of rooms
+      console.log({ descriptionTemp });
+      console.log(descriptionTemp || `Room ${response["room"]}`);
       addRoomToList({
         roomId: response["room"],
-        description: descriptionTemp,
+        description: descriptionTemp || `Room ${response["room"]}`,
       });
 
       descriptionTemp = "";
@@ -1245,20 +1180,7 @@ export const JanusProvider = ({ children }) => {
         videoSend: useVideo,
         data: true,
       }, // Publishers are sendonly
-      // If you want to test simulcasting (Chrome and Firefox only), then
-      // pass a ?simulcast=true when opening this demo page: it will turn
-      // the following 'simulcast' property to pass to janus.js to true
-      // simulcast: doSimulcast,
-      // simulcast2: doSimulcast2,
-      // customizeSdp: function (jsep) {
-      //   // If DTX is enabled, munge the SDP
-      //   if (doDtx) {
-      //     jsep.sdp = jsep.sdp.replace(
-      //       "useinbandfec=1",
-      //       "useinbandfec=1;usedtx=1"
-      //     );
-      //   }
-      // },
+
       success: function (jsep) {
         Janus.debug("Got publisher SDP!", jsep);
         let publish = {
@@ -1267,19 +1189,7 @@ export const JanusProvider = ({ children }) => {
           video: useVideo,
           data: true,
         };
-        // You can force a specific codec to use when publishing by using the
-        // audiocodec and videocodec properties, for instance:
-        // 		publish["audiocodec"] = "opus"
-        // to force Opus as the audio codec to use, or:
-        // 		publish["videocodec"] = "vp9"
-        // to force VP9 as the videocodec to use. In both case, though, forcing
-        // a codec will only work if: (1) the codec is actually in the SDP (and
-        // so the browser supports it), and (2) the codec is in the list of
-        // allowed codecs in a room. With respect to the point (2) above,
-        // refer to the text in janus.plugin.videoroom.jcfg for more details.
-        // We allow people to specify a codec via query string, for demo purposes
-        // if (acodec) publish["audiocodec"] = acodec;
-        // if (vcodec) publish["videocodec"] = vcodec;
+
         pluginHandle.send({
           message: publish,
           jsep: jsep,
@@ -1290,11 +1200,6 @@ export const JanusProvider = ({ children }) => {
       },
       error: function (error) {
         Janus.error("WebRTC error:", error);
-        // if (useAudio) {
-        //   publishOwnFeed(false, true);
-        // } else {
-        //   console.error("WebRTC error... " + error.message);
-        // }
       },
     });
   };
@@ -1307,7 +1212,6 @@ export const JanusProvider = ({ children }) => {
       transaction: randomString(12),
     };
     pluginHandle.send({ message: unpublish });
-    setLocalStream({});
   };
 
   const newRemoteFeed = (id, display, streams) => {
@@ -1599,145 +1503,7 @@ export const JanusProvider = ({ children }) => {
         // The subscriber stream is recvonly, we don't expect anything here
       },
       onremotestream: function (remoteStream) {
-        // Janus.debug(
-        //   "Remote feed #" +
-        //     remoteFeed.rfindex +
-        //     ", remote track (mid=" +
-        //     mid +
-        //     ") " +
-        //     (on ? "added" : "removed") +
-        //     ":",
-        //   track
-        // );
-        // if (!on) {
-        //   // Track removed, get rid of the stream and the rendering
-        //   let stream = remoteFeed.remoteTracks[mid];
-        //   if (stream) {
-        //     try {
-        //       let tracks = stream.getTracks();
-        //       for (let i in tracks) {
-        //         let mst = tracks[i];
-        //         if (mst !== null && mst !== undefined) mst.stop();
-        //       }
-        //     } catch (e) {}
-        //   }
-        //   // $("#remotevideo" + remoteFeed.rfindex + "-" + mid).remove();
-        //   if (track.kind === "video") {
-        //     remoteFeed.remoteVideos--;
-        //     if (remoteFeed.remoteVideos === 0) {
-        //       // No video, at least for now: show a placeholder
-        //       // if (
-        //       //   $("#videoremote" + remoteFeed.rfindex + " .no-video-container")
-        //       //     .length === 0
-        //       // ) {
-        //       //   $("#videoremote" + remoteFeed.rfindex).append(
-        //       //     '<div class="no-video-container">' +
-        //       //       '<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-        //       //       '<span class="no-video-text">No remote video available</span>' +
-        //       //       "</div>"
-        //       //   );
-        //       // }
-        //     }
-        //   }
-        //   delete remoteFeed.remoteTracks[mid];
-        //   return;
-        // }
-        // If we're here, a new track was added
-        // if (remoteFeed?.spinner) {
-        //   remoteFeed?.spinner?.stop();
-        //   remoteFeed.spinner = null;
-        // }
-        // if ($("#remotevideo" + remoteFeed.rfindex + "-" + mid).length > 0)
-        //   return;
-        // if (track.kind === "audio") {
-        //   // New audio track: create a stream out of it, and use a hidden <audio> element
-        //   let stream = new MediaStream();
-        //   stream.addTrack(track.clone());
-        //   remoteFeed.remoteTracks[mid] = stream;
-        //   Janus.log("Created remote audio stream:", stream);
-        // $("#videoremote" + remoteFeed.rfindex).append(
-        //   '<audio class="hide" id="remotevideo' +
-        //     remoteFeed.rfindex +
-        //     "-" +
-        //     mid +
-        //     '" autoplay playsinline/>'
-        // );
-        // TODO Attach media stream to a video element
-        // Janus.attachMediaStream(
-        //   $("#remotevideo" + remoteFeed.rfindex + "-" + mid).get(0),
-        //   stream
-        // );
         setRemoteStream(remoteStream.clone());
-        // if (remoteFeed.remoteVideos === 0) {
-        //   // No video, at least for now: show a placeholder
-        //   // if (
-        //   //   $("#videoremote" + remoteFeed.rfindex + " .no-video-container")
-        //   //     .length === 0
-        //   // ) {
-        //   //   $("#videoremote" + remoteFeed.rfindex).append(
-        //   //     '<div class="no-video-container">' +
-        //   //       '<i class="fa fa-video-camera fa-5 no-video-icon"></i>' +
-        //   //       '<span class="no-video-text">No remote video available</span>' +
-        //   //       "</div>"
-        //   //   );
-        //   // }
-        // }
-        // } else {
-        // New video track: create a stream out of it
-        // remoteFeed.remoteVideos++;
-        // // $(
-        // //   "#videoremote" + remoteFeed.rfindex + " .no-video-container"
-        // // ).remove();
-        // let stream = new MediaStream();
-        // stream.addTrack(track.clone());
-        // remoteFeed.remoteTracks[mid] = stream;
-        // Janus.log("Created remote video stream:", stream);
-        // // $("#videoremote" + remoteFeed.rfindex).append(
-        //   '<video class="rounded centered" id="remotevideo' +
-        //     remoteFeed.rfindex +
-        //     "-" +
-        //     mid +
-        //     '" width=100% autoplay playsinline/>'
-        // );
-        // $("#videoremote" + remoteFeed.rfindex).append(
-        //   '<span class="label label-primary hide" id="curres' +
-        //     remoteFeed.rfindex +
-        //     '" style="position: absolute; bottom: 0px; left: 0px; margin: 15px;"></span>' +
-        //     '<span class="label label-info hide" id="curbitrate' +
-        //     remoteFeed.rfindex +
-        //     '" style="position: absolute; bottom: 0px; right: 0px; margin: 15px;"></span>'
-        // );
-        // TODO Attach media stream to a video element
-        // Janus.attachMediaStream(
-        //   $("#remotevideo" + remoteFeed.rfindex + "-" + mid).get(0),
-        //   stream
-        // );
-        // setRemoteStream(stream);
-        // // Note: we'll need this for additional videos too
-        // if (!bitrateTimer[remoteFeed.rfindex]) {
-        //   // $("#curbitrate" + remoteFeed.rfindex)
-        //   //   .removeClass("hide")
-        //   //   .show();
-        //   bitrateTimer[remoteFeed.rfindex] = setInterval(function () {
-        //     // if (!$("#videoremote" + remoteFeed.rfindex + " video").get(0))
-        //     //   return;
-        //     // Display updated bitrate, if supported
-        //     let bitrate = remoteFeed.getBitrate();
-        //     // $("#curbitrate" + remoteFeed.rfindex).text(bitrate);
-        //     // // Check if the resolution changed too
-        //     // let width = $("#videoremote" + remoteFeed.rfindex + " video").get(
-        //     //   0
-        //     // ).videoWidth;
-        //     // let height = $(
-        //     //   "#videoremote" + remoteFeed.rfindex + " video"
-        //     // ).get(0).videoHeight;
-        //     // if (width > 0 && height > 0)
-        //     //   $("#curres" + remoteFeed.rfindex)
-        //     //     .removeClass("hide")
-        //     //     .text(width + "x" + height)
-        //     //     .show();
-        //   }, 1000);
-        // }
       },
       oncleanup: function () {
         Janus.log(
@@ -1762,22 +1528,89 @@ export const JanusProvider = ({ children }) => {
     });
   };
 
-  const toggleAudio = () => {
+  const toggleAudio = (publishing) => {
     console.log("toggleAudio", currentPluginHandle.isAudioMuted());
     let muted = currentPluginHandle.isAudioMuted();
-    Janus.log((muted ? "Unmuting" : "Muting") + " local stream...");
-    if (muted) currentPluginHandle.unmuteAudio();
-    else currentPluginHandle.muteAudio();
-    setAudioOn(currentPluginHandle.isAudioMuted());
+    Janus.log((muted ? "Unmuting" : "Muting") + " local audio stream...");
+    if (publishing) {
+      if (muted) currentPluginHandle.unmuteAudio();
+      else currentPluginHandle.muteAudio();
+      setAudioOn(currentPluginHandle.isAudioMuted());
+    } else setAudioOn(!audioOn);
   };
 
-  const toggleVideo = () => {
+  const toggleVideo = (publishing) => {
     console.log("toggleVideo", currentPluginHandle.isVideoMuted());
     let muted = currentPluginHandle.isVideoMuted();
-    Janus.log((muted ? "Unmuting" : "Muting") + " local stream...");
-    if (muted) currentPluginHandle.unmuteVideo();
-    else currentPluginHandle.muteVideo();
-    setVideoOn(currentPluginHandle.isVideoMuted());
+    Janus.log((muted ? "Unmuting" : "Muting") + " local video stream...");
+    if (publishing) {
+      if (muted) currentPluginHandle.unmuteVideo();
+      else currentPluginHandle.muteVideo();
+      setVideoOn(currentPluginHandle.isVideoMuted());
+    } else setVideoOn(!videoOn);
+  };
+
+  const leaveVideoRoom = () => {
+    return new Promise((resolve, reject) => {
+      let pluginHandle = currentPluginHandle;
+      let transaction = randomString(12);
+
+      let leave = {
+        request: "leave",
+        transaction: randomString(12),
+      };
+
+      const leaveTransactionFunc = (response) => {
+        console.log("Inside leaving transaction function", { response });
+
+        if (response["videoroom"] === "event" && response["leaving"] == "ok") {
+          setCurrentRoom(null);
+          // setCurrentPluginHandle(null);
+          attachVideoRoomPlugin(currentSession).then((pluginHandle) => {
+            addNewPluginHandle(pluginHandle);
+            resolve(pluginHandle);
+          });
+          // resolve();
+          console.log("LEFT THE ROOM CORRECTLY");
+        } else {
+          // Something went wrong
+          if (response["error_code"] === 417) {
+            console.error("No room with that code");
+          } else if (
+            response["error_code"] == 420 ||
+            response["error_code"] == 421
+          ) {
+            console.log("Already logged in");
+          } else {
+            console.error(response["error"]);
+          }
+          return;
+        }
+      };
+
+      transactionsTemp = {
+        ...transactionsTemp,
+        [transaction]: leaveTransactionFunc,
+      };
+
+      setTransactions((prevTransactions) => {
+        return {
+          ...prevTransactions,
+          [transaction]: leaveTransactionFunc,
+        };
+      });
+
+      pluginHandle.send({
+        message: leave,
+        transaction: transaction,
+        error: function (reason) {
+          console.error(reason);
+        },
+        success: (res) => {
+          console.log("LEFT CORRECTLY", res);
+        },
+      });
+    });
   };
 
   return (
@@ -1800,6 +1633,10 @@ export const JanusProvider = ({ children }) => {
         toggleVideo,
         audioOn,
         videoOn,
+        setAudioOn,
+        setVideoOn,
+        leaveVideoRoom,
+        isCommunicating,
       }}
     >
       {children}

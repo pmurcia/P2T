@@ -65,11 +65,15 @@ export default function ChatsLayout() {
     unpublishOwnFeed,
     localTracks,
     remoteStream,
-    localStream,
+    // localStream,
     toggleAudio,
     toggleVideo,
     audioOn,
     videoOn,
+    setAudioOn,
+    setVideoOn,
+    leaveVideoRoom,
+    isCommunicating,
   } = useContext(JanusContext);
   const { user } = useContext(AuthContext);
   const {
@@ -83,14 +87,34 @@ export default function ChatsLayout() {
 
   const [canTalk, setCanTalk] = useState(false);
   const [myRooms, setMyRooms] = useState();
-
-  const [audioPlaying, setAudioPlaying] = useState(audioOn);
-  const [videoPlaying, setVideoPlaying] = useState(videoOn);
+  const [isTalking, setIsTalking] = useState(false);
+  const [localStream, setLocalStream] = useState({});
 
   useEffect(() => {
-    setAudioPlaying(audioOn);
-    setVideoPlaying(videoOn);
-  }, [audioOn, videoOn]);
+    console.log({ audio: audioOn, video: videoOn });
+    if (canTalk && videoOn) {
+      // Send video
+      getLocalStream(false, videoOn);
+
+      // TODO: Check audio level
+    }
+  }, [audioOn, videoOn, canTalk]);
+
+  useEffect(() => {
+    if (!isCommunicating) {
+      console.log("STOPPED COMMUNICATING", { localStream });
+      if (!isEmptyObject(localStream)) {
+        console.log("CLEARING STREAM");
+        console.log(localStream.getTracks());
+        localStream.getTracks().forEach((track) => track.stop());
+      }
+      setLocalStream({});
+    }
+  }, [isCommunicating]);
+
+  useEffect(() => {
+    console.log("IS TALKING", isTalking);
+  }, [isTalking]);
 
   let messageInput = useRef(null);
   let messagesEnd = useRef(null);
@@ -98,6 +122,14 @@ export default function ChatsLayout() {
   const videoElement = useRef(null);
 
   const classes = useStyles();
+
+  const isEmptyObject = (obj) => {
+    return (
+      obj &&
+      Object.keys(obj).length === 0 &&
+      Object.getPrototypeOf(obj) === Object.prototype
+    );
+  };
 
   useEffect(() => {
     console.log("New local stream", { localStream });
@@ -113,6 +145,8 @@ export default function ChatsLayout() {
       Object.getPrototypeOf(remoteStream) === Object.prototype;
 
     console.log({ isEmptyLocalStream, isEmptyRemoteStream });
+    // if (isEmptyLocalStream)
+    //   localStream.getTracks().forEach((track) => track.stop());
 
     if (videoElement?.current) {
       if (!isEmptyLocalStream && isEmptyRemoteStream) {
@@ -132,6 +166,7 @@ export default function ChatsLayout() {
   useEffect(() => {
     // Clear interval when the component unmounts
     return () => {
+      console.log("Closing");
       clearTimeout(talkTimerRef.current);
       if (currentRoom) removeFromQueue(currentRoom);
     };
@@ -147,10 +182,11 @@ export default function ChatsLayout() {
     console.log(`CAN${canTalk ? "" : "NOT"} TALK`);
     if (canTalk) {
       console.log("CAN TALK PUBLISH OWN FEED");
-      publishOwnFeed(true, true);
+      // publishOwnFeed(true, true);
       talkTimerRef.current = setTimeout(() => {
         console.log("You took to much time to finish");
-        unpublishOwnFeed();
+        if (isCommunicating) unpublishOwnFeed();
+        setIsTalking(false);
         removeFromQueue(currentRoom);
       }, 20000);
     } else {
@@ -184,15 +220,13 @@ export default function ChatsLayout() {
       console.log(message);
       // Send message
       sendData(message);
-      removeFromQueue(currentRoom);
       // Message sent
       messageInput.current.value = "";
     }
-
-    unpublishOwnFeed();
   };
 
   const handleActivityClick = (e) => {
+    e.preventDefault();
     console.log("Checking for queue");
     let onQueue = isOnQueue(currentRoom);
     if (!onQueue) {
@@ -207,14 +241,38 @@ export default function ChatsLayout() {
     let theCode = e.keyCode ? e.keyCode : e.which ? e.which : e.charCode;
     if (theCode == 13) {
       sendMessage();
+      if (isCommunicating) unpublishOwnFeed();
+      setIsTalking(false);
     } else {
       clearTimeout(talkTimerRef.current);
+      if (!isCommunicating) publishOwnFeed(audioOn, videoOn);
+      setIsTalking(true);
       talkTimerRef.current = setTimeout(() => {
         console.log("You took to much time to finish");
-        unpublishOwnFeed();
+        if (isCommunicating) unpublishOwnFeed();
+        setIsTalking(false);
         removeFromQueue(currentRoom);
       }, 20000);
     }
+  };
+
+  const getLocalStream = (audio, video) => {
+    navigator.getMedia =
+      navigator.getUserMedia ||
+      navigator.webkitGetUserMedia ||
+      navigator.mozGetUserMedia;
+
+    const constraints = {
+      video: video,
+      audio: audio,
+    };
+    const successCallback = (stream) => {
+      setLocalStream(stream);
+    };
+    const errorCallback = (error) => {
+      console.error(error);
+    };
+    navigator.getMedia(constraints, successCallback, errorCallback);
   };
 
   // Get queue for all participants in a room, whether on queue or not
@@ -249,18 +307,6 @@ export default function ChatsLayout() {
       return a.queuePos - b.queuePos;
     });
 
-    // Assing UI positions on list
-    // let finalOrder = initialOrder.map(
-    //   (item) => {
-    //     this.acc++;
-    //     return {
-    //       ...item,
-    //       listKey: this.acc,
-    //     };
-    //   },
-    //   { acc: 1 }
-    // );
-
     let final = [];
     initialSorted.forEach((item) => {
       let lastPos = Object.keys(participants).length + 1;
@@ -274,6 +320,41 @@ export default function ChatsLayout() {
     console.log({ final });
 
     return final;
+  };
+
+  const handleMouseUp = (e) => {
+    e.preventDefault();
+    sendMessage(e);
+    if (isCommunicating && !isEmptyObject(localStream)) {
+      localStream.getTracks().forEach((track) => track.stop());
+      unpublishOwnFeed();
+      removeFromQueue(currentRoom);
+      setIsTalking(false);
+    }
+  };
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    clearTimeout(talkTimerRef.current);
+    if (!isCommunicating) {
+      publishOwnFeed(audioOn, videoOn);
+      setIsTalking(true);
+    }
+  };
+
+  const handleRoomChange = (roomId) => {
+    // If there is no room associated, join a new room
+    if (!currentRoom) {
+      joinVideoRoom(roomId);
+      return;
+    }
+
+    // If I am connected to a room, I need to remove myself from the room and join the new one
+    if (roomId !== currentRoom) {
+      leaveVideoRoom().then((_) => {
+        joinVideoRoom(roomId);
+      });
+    }
   };
 
   return (
@@ -314,9 +395,13 @@ export default function ChatsLayout() {
                       <ListItem
                         button
                         key={roomId}
-                        onClick={() => {
-                          console.log({ roomId });
-                          joinVideoRoom(roomId);
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleRoomChange(roomId);
+                        }}
+                        sx={{
+                          backgroundColor:
+                            currentRoom === roomId ? "lightgray" : "none",
                         }}
                       >
                         <ListItemIcon>
@@ -353,6 +438,9 @@ export default function ChatsLayout() {
                         </Message>
                       </ListItem>
                     ))}
+                  <Message author={getQueueInfo()[0]}>
+                    <video autoPlay ref={videoElement} />
+                  </Message>
                   <div
                     style={{ float: "left", clear: "both" }}
                     ref={(el) => {
@@ -360,10 +448,6 @@ export default function ChatsLayout() {
                     }}
                   ></div>
                 </List>
-
-                <Message author={getQueueInfo()[0]}>
-                  <video autoPlay ref={videoElement} />
-                </Message>
 
                 <Divider />
 
@@ -388,16 +472,20 @@ export default function ChatsLayout() {
                           aria-label="audio"
                           onClick={(e) => {
                             e.preventDefault();
-                            toggleAudio();
+                            toggleAudio(isCommunicating);
                           }}
                         >
-                          {audioPlaying ? (
+                          {audioOn ? (
                             <>
                               <MicIcon />
                             </>
                           ) : (
                             <>
-                              <MicOffIcon />
+                              <MicOffIcon
+                                sx={{
+                                  color: "red",
+                                }}
+                              />
                             </>
                           )}
                         </IconButton>
@@ -407,16 +495,20 @@ export default function ChatsLayout() {
                           aria-label="video"
                           onClick={(e) => {
                             e.preventDefault();
-                            toggleVideo();
+                            toggleVideo(isCommunicating);
                           }}
                         >
-                          {videoPlaying ? (
+                          {videoOn ? (
                             <>
                               <VideocamIcon />
                             </>
                           ) : (
                             <>
-                              <VideocamOffIcon />
+                              <VideocamOffIcon
+                                sx={{
+                                  color: "red",
+                                }}
+                              />
                             </>
                           )}
                         </IconButton>
@@ -424,7 +516,8 @@ export default function ChatsLayout() {
                           variant="contained"
                           color="primary"
                           aria-label="message"
-                          onClick={sendMessage}
+                          onMouseUp={handleMouseUp}
+                          onMouseDown={handleMouseDown}
                         >
                           <SendIcon />
                         </IconButton>
