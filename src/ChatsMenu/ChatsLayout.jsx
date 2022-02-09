@@ -103,6 +103,20 @@ export default function ChatsLayout() {
 
       // TODO: Check audio level
     }
+
+    if (!audioOn && !videoOn) {
+      if (!isEmptyObject(localStream)) {
+        localStream.getTracks().forEach((track) => track.stop());
+        setLocalStream({});
+      }
+    }
+
+    if (!canTalk) {
+      if (!isEmptyObject(localStream)) {
+        localStream.getTracks().forEach((track) => track.stop());
+        setLocalStream({});
+      }
+    }
   }, [audioOn, videoOn, canTalk]);
 
   useEffect(() => {
@@ -168,8 +182,6 @@ export default function ChatsLayout() {
         setHasVideo(false);
       }
       // console.log(videoElement.current);
-    } else {
-      setHasVideo(false);
     }
   }, [localStream, remoteStream]);
 

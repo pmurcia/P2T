@@ -1212,6 +1212,7 @@ export const JanusProvider = ({ children }) => {
       transaction: randomString(12),
     };
     pluginHandle.send({ message: unpublish });
+    setIsCommunicating(false);
   };
 
   const newRemoteFeed = (id, display, streams) => {
