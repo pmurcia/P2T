@@ -35,7 +35,8 @@ const useStyles = makeStyles({
   },
   chatSection: {
     width: "100%",
-    height: "100vh",
+    minHeight: "100vh",
+    maxHeight: "100vh",
   },
   headBG: {
     backgroundColor: "#e0e0e0",
@@ -48,8 +49,11 @@ const useStyles = makeStyles({
     height: "100vh",
   },
   messageArea: {
-    minHeight: "80vh",
-    overflowY: "auto",
+    maxHeight: "80vh",
+    overflowY: "scroll",
+    // height: "100%",
+    borderBottom: "1px solid #e0e0e0",
+    flex: "1 1 auto",
   },
 });
 
@@ -89,6 +93,7 @@ export default function ChatsLayout() {
   const [myRooms, setMyRooms] = useState();
   const [isTalking, setIsTalking] = useState(false);
   const [localStream, setLocalStream] = useState({});
+  const [hasVideo, setHasVideo] = useState(false);
 
   useEffect(() => {
     console.log({ audio: audioOn, video: videoOn });
@@ -152,14 +157,19 @@ export default function ChatsLayout() {
       if (!isEmptyLocalStream && isEmptyRemoteStream) {
         videoElement.current.srcObject = localStream;
         console.log("Adding local source");
+        setHasVideo(true);
       } else if (isEmptyLocalStream && !isEmptyRemoteStream) {
         videoElement.current.srcObject = remoteStream;
         console.log("Adding remote source");
+        setHasVideo(true);
       } else {
         videoElement.current.srcObject = null;
         console.log("Removing video source");
+        setHasVideo(false);
       }
       // console.log(videoElement.current);
+    } else {
+      setHasVideo(false);
     }
   }, [localStream, remoteStream]);
 
@@ -359,8 +369,13 @@ export default function ChatsLayout() {
 
   return (
     <>
-      <div>
-        <Grid container component={Paper} className={classes.chatSection}>
+      <div
+        sx={{
+          height: "100vh",
+          width: "100vw",
+        }}
+      >
+        <Grid container className={classes.chatSection}>
           <Grid item xs={3} className={classes.borderRight500}>
             <ProfileMenu user={user} />
             <Divider />
@@ -422,7 +437,16 @@ export default function ChatsLayout() {
             </List>
           </Grid>
 
-          <Grid item xs={7}>
+          <Grid
+            item
+            xs={7}
+            sx={{
+              height: "100vh",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+            }}
+          >
             {/**** Message History *****/}
             {currentRoom && (
               <>
@@ -438,9 +462,7 @@ export default function ChatsLayout() {
                         </Message>
                       </ListItem>
                     ))}
-                  <Message author={getQueueInfo()[0]}>
-                    <video autoPlay ref={videoElement} />
-                  </Message>
+
                   <div
                     style={{ float: "left", clear: "both" }}
                     ref={(el) => {
@@ -449,9 +471,17 @@ export default function ChatsLayout() {
                   ></div>
                 </List>
 
-                <Divider />
+                {/* <Divider /> */}
 
-                <Grid container style={{ padding: "20px" }}>
+                <Grid
+                  container
+                  style={{
+                    padding: "20px",
+                  }}
+                >
+                  <Grid item xs={12}>
+                    <video autoPlay ref={videoElement} height={300} />
+                  </Grid>
                   {canTalk && (
                     <>
                       <Grid item xs={9}>

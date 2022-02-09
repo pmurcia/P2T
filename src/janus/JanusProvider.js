@@ -238,7 +238,7 @@ export const JanusProvider = ({ children }) => {
     return new Promise((resolve, reject) => {
       let session;
       let params = {
-        server: ["ws://localhost:8188/", "http://localhost:8088/janus"],
+        server: process.env.REACT_APP_JANUS_SERVERS.split(","),
         success: () => {
           console.log("Success!", session.getSessionId());
           addNewSession(session);
